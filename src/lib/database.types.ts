@@ -33,6 +33,7 @@ export interface Database {
           color: string;
           kind: TagKind | null;
           group_id: string | null;
+          counts_as_work: boolean;
           archived: boolean;
           sort_order: number;
           created_at: string;

@@ -1,9 +1,27 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { clsx } from "clsx";
 import type { TagGroup } from "@/lib/database.types";
 import { createTagGroup, deleteTagGroup, updateTagGroup } from "@/lib/actions/tag-groups";
 import { randomTagColor } from "@/lib/tags";
+import { ColorPicker } from "@/components/color-picker";
+
+function StudyToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title="Blocks for tags in this group get a &quot;Study&quot; title prefix"
+      className={clsx(
+        "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+        active ? "bg-accent-soft text-accent border-accent/40" : "border-border text-text-muted hover:text-text",
+      )}
+    >
+      Study
+    </button>
+  );
+}
 
 export function TagGroupManager({ groups }: { groups: TagGroup[] }) {
   const [adding, setAdding] = useState(false);
@@ -40,12 +58,10 @@ function GroupRow({ group }: { group: TagGroup }) {
 
   return (
     <li className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-surface">
-      <input
-        type="color"
+      <ColorPicker
         value={group.color}
-        onChange={(e) => startTransition(() => updateTagGroup(group.id, { color: e.target.value }))}
-        title="Group color"
-        className="w-5 h-5 rounded-full shrink-0 border border-border bg-transparent p-0 cursor-pointer [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-none"
+        onChange={(hex) => startTransition(() => updateTagGroup(group.id, { color: hex }))}
+        className="w-6 h-6 rounded-full"
       />
       {editing ? (
         <input
@@ -65,14 +81,10 @@ function GroupRow({ group }: { group: TagGroup }) {
           {group.label}
         </button>
       )}
-      <label className="flex items-center gap-1.5 text-xs text-text-muted">
-        <input
-          type="checkbox"
-          checked={group.is_study_unit}
-          onChange={(e) => startTransition(() => updateTagGroup(group.id, { is_study_unit: e.target.checked }))}
-        />
-        study unit
-      </label>
+      <StudyToggle
+        active={group.is_study_unit}
+        onToggle={() => startTransition(() => updateTagGroup(group.id, { is_study_unit: !group.is_study_unit }))}
+      />
       <button
         disabled={pending}
         onClick={() => {
@@ -105,12 +117,7 @@ function NewGroupForm({ onDone }: { onDone: () => void }) {
 
   return (
     <form onSubmit={submit} className="flex items-center gap-2 rounded-lg border border-border px-2 py-1.5">
-      <input
-        type="color"
-        value={color}
-        onChange={(e) => setColor(e.target.value)}
-        className="w-5 h-5 rounded-full shrink-0 border border-border bg-transparent p-0 cursor-pointer [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-none"
-      />
+      <ColorPicker value={color} onChange={setColor} className="w-6 h-6 rounded-full" />
       <input
         value={label}
         onChange={(e) => setLabel(e.target.value)}
@@ -118,10 +125,7 @@ function NewGroupForm({ onDone }: { onDone: () => void }) {
         autoFocus
         className="flex-1 bg-transparent border-b border-border outline-none text-sm"
       />
-      <label className="flex items-center gap-1.5 text-xs text-text-muted">
-        <input type="checkbox" checked={isStudyUnit} onChange={(e) => setIsStudyUnit(e.target.checked)} />
-        study unit
-      </label>
+      <StudyToggle active={isStudyUnit} onToggle={() => setIsStudyUnit((v) => !v)} />
       <button
         type="submit"
         disabled={pending || !label.trim()}

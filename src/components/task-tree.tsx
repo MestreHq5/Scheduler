@@ -8,7 +8,7 @@ import { TagPill } from "@/components/tag-pill";
 import { TagSelect } from "@/components/tag-select";
 import { QuickAddTask } from "@/components/quick-add-task";
 import { WheelDatePicker } from "@/components/wheel-date-picker";
-import { updateTask, moveTask } from "@/lib/actions/tasks";
+import { deleteTask, updateTask, moveTask } from "@/lib/actions/tasks";
 
 const ROOT_DROP = "ROOT";
 
@@ -31,6 +31,7 @@ interface TreeCtxValue {
   onGripPointerDown: (task: Task, e: React.PointerEvent<HTMLButtonElement>) => void;
   expandedIds: Set<string>;
   toggleExpand: (id: string) => void;
+  ensureExpanded: (id: string) => void;
   registerRef: (id: string, el: HTMLElement | null) => void;
 }
 
@@ -65,7 +66,17 @@ export function TaskTree({
   const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
 
   const [drag, setDrag] = useState<DragVisual | null>(null);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+  // Fully open on load — collapsing is a user action, not a default. Seeded
+  // from whichever tasks already have children on first mount; a tag filter
+  // or the archive page each get their own mount (and thus their own fresh
+  // full-expand), so this doesn't need to react to later `tasks` changes.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+    const parentIds = new Set<string>();
+    for (const t of tasks) {
+      if (t.parent_id) parentIds.add(t.parent_id);
+    }
+    return parentIds;
+  });
   const [, startTransition] = useTransition();
   const dragRef = useRef<{ id: string; pointerId: number } | null>(null);
   const invalidIdsRef = useRef<Set<string>>(new Set());
@@ -82,6 +93,10 @@ export function TaskTree({
       else next.add(id);
       return next;
     });
+  }
+
+  function ensureExpanded(id: string) {
+    setExpandedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
   }
 
   function registerRef(id: string, el: HTMLElement | null) {
@@ -212,10 +227,17 @@ export function TaskTree({
 
   const draggedTask = drag ? byId.get(drag.id) : null;
 
+  const prevRectsRef = useRef<Map<string, DOMRect>>(new Map());
+
   // Recompute connector geometry whenever the layout could have shifted:
   // task list changes, expand/collapse, or a resize of the tree container
   // (the ResizeObserver below also catches inline form/editing height
   // changes, so this doesn't need to track every possible cause by hand).
+  // The same pass also runs a FLIP animation for any surviving card that
+  // moved since the last layout (e.g. cards below a branch that just
+  // expanded/collapsed sliding to their new spot) — connector geometry is
+  // read first, from the natural (untransformed) layout, before any
+  // animation transform gets applied.
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -247,6 +269,27 @@ export function TaskTree({
     }
 
     setConnectors(next);
+
+    const prevRects = prevRectsRef.current;
+    const currentRects = new Map<string, DOMRect>();
+    for (const [id, el] of nodeRefs.current) {
+      const rect = el.getBoundingClientRect();
+      currentRects.set(id, rect);
+      const prev = prevRects.get(id);
+      if (prev) {
+        const dy = prev.top - rect.top;
+        if (Math.abs(dy) > 1) {
+          el.style.transition = "none";
+          el.style.transform = `translateY(${dy}px)`;
+          void el.getBoundingClientRect(); // force reflow before switching to the transition
+          requestAnimationFrame(() => {
+            el.style.transition = "transform 280ms ease";
+            el.style.transform = "";
+          });
+        }
+      }
+    }
+    prevRectsRef.current = currentRects;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, expandedIds, resizeTick]);
 
@@ -281,7 +324,9 @@ export function TaskTree({
   }
 
   return (
-    <TreeCtx.Provider value={{ drag, invalidIdsRef, onGripPointerDown, expandedIds, toggleExpand, registerRef }}>
+    <TreeCtx.Provider
+      value={{ drag, invalidIdsRef, onGripPointerDown, expandedIds, toggleExpand, ensureExpanded, registerRef }}
+    >
       {drag && (
         <div
           data-task-drop-root
@@ -324,18 +369,18 @@ export function TaskTree({
             )}
           </svg>
 
-          <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-6 items-start">
-            <ul className="space-y-3">
+          <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-8 items-start">
+            <ul className="space-y-6">
               {roots.map((task) => (
                 <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
               ))}
             </ul>
-            <ul className="space-y-3">
+            <ul className="space-y-5">
               {col1.map((task) => (
                 <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
               ))}
             </ul>
-            <ul className="space-y-3">
+            <ul className="space-y-5">
               {col2.map((task) => (
                 <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
               ))}
@@ -411,6 +456,13 @@ function TaskNode({
     startTransition(() => updateTask(task.id, { tag_id: id }));
   }
 
+  function removeTask() {
+    if (!confirm(`Delete "${task.title}"? This can't be undone — it's removed permanently, along with any subtasks.`)) {
+      return;
+    }
+    startTransition(() => deleteTask(task.id));
+  }
+
   return (
     <li
       ref={(el) => ctx?.registerRef(task.id, el)}
@@ -436,6 +488,15 @@ function TaskNode({
         </button>
 
         <TaskCheckbox id={task.id} done={task.done} />
+
+        <button
+          type="button"
+          onClick={removeTask}
+          aria-label="Delete task"
+          className="order-last shrink-0 mt-1 p-1 rounded text-text-muted/40 hover:text-danger transition-colors"
+        >
+          <TrashIcon />
+        </button>
 
         <div className="flex-1 min-w-0">
           {parentTask && (
@@ -531,13 +592,24 @@ function TaskNode({
                 parentId={task.id}
                 defaultTagId={task.tag_id}
                 compact
-                onDone={() => setAddingChild(false)}
+                onDone={() => {
+                  setAddingChild(false);
+                  ctx?.ensureExpanded(task.id);
+                }}
               />
             </div>
           )}
         </div>
       </div>
     </li>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M4 7h16M9 7V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2m-8 0 1 13a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l1-13" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { Logo } from "@/components/logo";
 
 export default function NotFound() {
   return (
     <main className="min-h-dvh flex items-center justify-center px-6">
       <div className="w-full max-w-sm text-center">
-        <Logo className="w-10 h-10 mx-auto mb-6" />
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="" className="w-10 h-10 mx-auto mb-6 object-contain" />
         <p className="font-display italic text-xl text-accent mb-2 tracking-wide">Off course,</p>
         <h1 className="font-display text-5xl mb-4">404</h1>
         <p className="text-text-muted mb-8">

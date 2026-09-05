@@ -52,7 +52,7 @@ export default async function CalendarPage({
       </div>
 
       <div className="mb-6">
-        <QuickAddBlock tags={tags ?? []} defaultDate={today} />
+        <QuickAddBlock tags={tags ?? []} defaultDate={today} timezone={timezone} />
       </div>
 
       <WeekNav prevWeek={prevWeek} nextWeek={nextWeek} label={`${monday} – ${weekEnd}`} />

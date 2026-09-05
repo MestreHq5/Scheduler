@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { deriveBlockTitle } from "@/lib/tags";
+import { addDays, daysBetween } from "@/lib/dates";
 import type { Block, TagKind } from "@/lib/database.types";
 
 async function currentUserId() {
@@ -100,35 +101,27 @@ export async function deleteBlock(id: string) {
 export async function duplicateWeek(sourceMonday: string, targetMonday: string) {
   const { supabase, userId } = await currentUserId();
 
-  const sourceDate = new Date(`${sourceMonday}T00:00:00`);
-  const targetDate = new Date(`${targetMonday}T00:00:00`);
-  const dayOffset = Math.round((targetDate.getTime() - sourceDate.getTime()) / 86_400_000);
-
-  const weekEnd = new Date(sourceDate);
-  weekEnd.setDate(weekEnd.getDate() + 6);
+  const dayOffset = daysBetween(sourceMonday, targetMonday);
+  const weekEnd = addDays(sourceMonday, 6);
 
   const { data: sourceBlocks, error: fetchError } = await supabase
     .from("blocks")
     .select("tag_id, title, date, start_time, end_time, details")
     .eq("user_id", userId)
     .gte("date", sourceMonday)
-    .lte("date", weekEnd.toISOString().slice(0, 10));
+    .lte("date", weekEnd);
   if (fetchError) throw fetchError;
   if (!sourceBlocks?.length) return;
 
-  const copies = sourceBlocks.map((b) => {
-    const d = new Date(`${b.date}T00:00:00`);
-    d.setDate(d.getDate() + dayOffset);
-    return {
-      user_id: userId,
-      tag_id: b.tag_id,
-      title: b.title,
-      date: d.toISOString().slice(0, 10),
-      start_time: b.start_time,
-      end_time: b.end_time,
-      details: b.details,
-    };
-  });
+  const copies = sourceBlocks.map((b) => ({
+    user_id: userId,
+    tag_id: b.tag_id,
+    title: b.title,
+    date: addDays(b.date, dayOffset),
+    start_time: b.start_time,
+    end_time: b.end_time,
+    details: b.details,
+  }));
 
   const { error: insertError } = await supabase.from("blocks").insert(copies);
   if (insertError) throw insertError;

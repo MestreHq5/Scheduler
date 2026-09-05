@@ -8,7 +8,7 @@ import { nowClockInTimezone } from "@/lib/dates";
 import { contrastText } from "@/lib/color";
 import { BlockEditModal } from "@/components/block-edit-modal";
 
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]; // indexed by Date#getUTCDay()
 const VISIBLE_HOURS = 12; // the viewport always shows this many hours without scrolling
 const DEFAULT_HOUR_HEIGHT = 48;
 const SNAP_MINUTES = 15;
@@ -25,6 +25,17 @@ type DragState = {
   pointerStartX: number;
   pointerStartY: number;
   moved: boolean;
+};
+
+type ResizeState = {
+  id: string;
+  date: string;
+  edge: "start" | "end";
+  origStartMinutes: number;
+  origEndMinutes: number;
+  pointerStartY: number;
+  liveStartMinutes: number;
+  liveEndMinutes: number;
 };
 
 function timeToMinutes(t: string) {
@@ -75,12 +86,15 @@ export function WeekCalendar({
   tags,
   today,
   timezone,
+  heightClassName = "h-[70dvh]",
 }: {
   weekDates: string[];
   blocks: BlockWithTag[];
   tags: Tag[];
   today: string;
   timezone: string;
+  /** Overrides the scroll container's height — used to fit a compact single-day view, e.g. on the Hub. */
+  heightClassName?: string;
 }) {
   const [optimisticBlocks, applyOptimisticMove] = useOptimistic(blocks, (state, update: MoveUpdate) =>
     state.map((b) => (b.id === update.id ? { ...b, date: update.date, start_time: update.start_time, end_time: update.end_time } : b)),
@@ -95,6 +109,7 @@ export function WeekCalendar({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hourHeight, setHourHeight] = useState(DEFAULT_HOUR_HEIGHT);
   const [drag, setDrag] = useState<DragState | null>(null);
+  const [resize, setResize] = useState<ResizeState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingBlock, setEditingBlock] = useState<BlockWithTag | null>(null);
   const [, startTransition] = useTransition();
@@ -157,7 +172,38 @@ export function WeekCalendar({
     e.currentTarget.setPointerCapture(e.pointerId);
   }
 
+  function beginResize(e: React.PointerEvent, block: BlockWithTag, edge: "start" | "end") {
+    e.stopPropagation();
+    const startMinutes = timeToMinutes(block.start_time);
+    const endMinutes = timeToMinutes(block.end_time);
+    setResize({
+      id: block.id,
+      date: block.date,
+      edge,
+      origStartMinutes: startMinutes,
+      origEndMinutes: endMinutes,
+      pointerStartY: e.clientY,
+      liveStartMinutes: startMinutes,
+      liveEndMinutes: endMinutes,
+    });
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  }
+
   function onPointerMove(e: React.PointerEvent) {
+    if (resize) {
+      const deltaMinutes = ((e.clientY - resize.pointerStartY) / hourHeight) * 60;
+      setResize((r) => {
+        if (!r) return r;
+        if (r.edge === "start") {
+          const next = Math.max(0, Math.min(r.origEndMinutes - SNAP_MINUTES, r.origStartMinutes + deltaMinutes));
+          return { ...r, liveStartMinutes: next };
+        }
+        const next = Math.min(24 * 60, Math.max(r.origStartMinutes + SNAP_MINUTES, r.origEndMinutes + deltaMinutes));
+        return { ...r, liveEndMinutes: next };
+      });
+      return;
+    }
+
     if (!drag) return;
     const movedFar = Math.hypot(e.clientX - drag.pointerStartX, e.clientY - drag.pointerStartY) > CLICK_THRESHOLD_PX;
     const target = document.elementFromPoint(e.clientX, e.clientY);
@@ -176,6 +222,33 @@ export function WeekCalendar({
         moved: d.moved || movedFar,
       },
     );
+  }
+
+  function endResize() {
+    if (!resize) return;
+    const snappedStart = minutesToTime(resize.liveStartMinutes);
+    const snappedEnd = minutesToTime(resize.liveEndMinutes);
+    const { id, date } = resize;
+    const resizedTitle =
+      blocks.find((b) => b.id === id)?.title ?? optimisticBlocks.find((b) => b.id === id)?.title ?? "Block";
+    setResize(null);
+
+    startTransition(async () => {
+      applyOptimisticMove({ id, date, start_time: snappedStart, end_time: snappedEnd });
+      try {
+        await moveBlock(id, { date, start_time: snappedStart, end_time: snappedEnd });
+      } catch (e) {
+        setError(`"${resizedTitle}" couldn't be resized — ${e instanceof Error ? e.message : "something went wrong"}.`);
+      }
+    });
+  }
+
+  function onPointerUpOrCancel() {
+    if (resize) {
+      endResize();
+      return;
+    }
+    endDrag();
   }
 
   function endDrag() {
@@ -224,15 +297,19 @@ export function WeekCalendar({
       )}
       <div
         ref={scrollRef}
-        className="overflow-y-auto overflow-x-hidden h-[70dvh] rounded-xl border border-border"
+        className={clsx("overflow-y-auto overflow-x-hidden rounded-xl border border-border", heightClassName)}
         onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
+        onPointerUp={onPointerUpOrCancel}
+        onPointerCancel={onPointerUpOrCancel}
       >
-      <div className="grid select-none" style={{ gridTemplateColumns: "2.75rem repeat(7, minmax(0, 1fr))" }}>
+      <div
+        className="grid select-none"
+        style={{ gridTemplateColumns: `2.75rem repeat(${weekDates.length}, minmax(0, 1fr))` }}
+      >
         <div className="sticky top-0 left-0 z-20 bg-bg" />
-        {weekDates.map((date, i) => {
+        {weekDates.map((date) => {
           const isToday = date === today;
+          const weekday = WEEKDAY_LABELS[new Date(`${date}T00:00:00Z`).getUTCDay()];
           return (
             <div
               key={date}
@@ -241,7 +318,7 @@ export function WeekCalendar({
                 isToday && "text-accent",
               )}
             >
-              <p className="text-xs font-medium">{DAY_LABELS[i]}</p>
+              <p className="text-xs font-medium">{weekday}</p>
               <p className="text-[11px] text-text-muted">{date.slice(5)}</p>
             </div>
           );
@@ -276,8 +353,9 @@ export function WeekCalendar({
             >
               {dayBlocks.map((b) => {
                 const { col, count } = layout.get(b.id) ?? { col: 0, count: 1 };
-                const startMin = timeToMinutes(b.start_time);
-                const endMin = timeToMinutes(b.end_time);
+                const isResizing = resize?.id === b.id;
+                const startMin = isResizing ? resize.liveStartMinutes : timeToMinutes(b.start_time);
+                const endMin = isResizing ? resize.liveEndMinutes : timeToMinutes(b.end_time);
                 return (
                   <BlockCard
                     key={b.id}
@@ -287,6 +365,7 @@ export function WeekCalendar({
                     leftPct={(col / count) * 100}
                     widthPct={100 / count}
                     onPointerDown={(e) => beginDrag(e, b)}
+                    onResizeStart={(e, edge) => beginResize(e, b, edge)}
                   />
                 );
               })}
@@ -330,6 +409,7 @@ function BlockCard({
   leftPct,
   widthPct,
   onPointerDown,
+  onResizeStart,
 }: {
   block: BlockWithTag;
   top: number;
@@ -337,6 +417,7 @@ function BlockCard({
   leftPct: number;
   widthPct: number;
   onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onResizeStart: (e: React.PointerEvent<HTMLDivElement>, edge: "start" | "end") => void;
 }) {
   const [pending, startTransition] = useTransition();
   const color = block.tag?.color ?? "#64748b";
@@ -357,6 +438,12 @@ function BlockCard({
       }}
       className="group absolute overflow-hidden rounded-lg px-2 py-1 text-xs cursor-grab active:cursor-grabbing"
     >
+      <div
+        onPointerDown={(e) => onResizeStart(e, "start")}
+        className="absolute inset-x-0 top-0 h-1.5 cursor-ns-resize touch-none"
+      >
+        <span className="mx-auto mt-0.5 block h-0.5 w-6 rounded-full bg-current opacity-0 group-hover:opacity-50" />
+      </div>
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium truncate">{block.title}</span>
         <button
@@ -377,6 +464,12 @@ function BlockCard({
           {block.details}
         </span>
       )}
+      <div
+        onPointerDown={(e) => onResizeStart(e, "end")}
+        className="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize touch-none"
+      >
+        <span className="mx-auto mb-0.5 block h-0.5 w-6 rounded-full bg-current opacity-0 group-hover:opacity-50" />
+      </div>
     </div>
   );
 }

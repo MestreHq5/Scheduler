@@ -6,6 +6,7 @@ import type { Tag, TagGroup } from "@/lib/database.types";
 import { deleteTag, setTagArchived, updateTag } from "@/lib/actions/tags";
 import { TagQuickAddModal } from "@/components/tag-quick-add-modal";
 import { Dropdown } from "@/components/dropdown";
+import { ColorPicker } from "@/components/color-picker";
 
 const NO_GROUP = "__none__";
 
@@ -49,12 +50,10 @@ function TagRow({ tag, groups }: { tag: Tag; groups: TagGroup[] }) {
 
   return (
     <li className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-surface">
-      <input
-        type="color"
+      <ColorPicker
         value={tag.color}
-        onChange={(e) => startTransition(() => updateTag(tag.id, { color: e.target.value }))}
-        title="Tag color"
-        className="w-5 h-5 rounded-full shrink-0 border border-border bg-transparent p-0 cursor-pointer [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-none"
+        onChange={(hex) => startTransition(() => updateTag(tag.id, { color: hex }))}
+        className="w-6 h-6 rounded-full"
       />
       {editing ? (
         <input
@@ -76,10 +75,30 @@ function TagRow({ tag, groups }: { tag: Tag; groups: TagGroup[] }) {
       )}
       <Dropdown
         value={tag.group_id ?? NO_GROUP}
-        onChange={(next) => startTransition(() => updateTag(tag.id, { group_id: next === NO_GROUP ? null : next }))}
+        onChange={(next) => {
+          if (next === NO_GROUP) {
+            startTransition(() => updateTag(tag.id, { group_id: null }));
+            return;
+          }
+          const group = groups.find((g) => g.id === next);
+          startTransition(() => updateTag(tag.id, { group_id: next, ...(group ? { color: group.color } : {}) }));
+        }}
         className="w-36"
         options={[{ value: NO_GROUP, label: "No group" }, ...groups.map((g) => ({ value: g.id, label: g.label }))]}
       />
+      <button
+        type="button"
+        onClick={() => startTransition(() => updateTag(tag.id, { counts_as_work: !tag.counts_as_work }))}
+        title="Whether this tag's blocks count toward the Hub's daily work progress"
+        className={clsx(
+          "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+          tag.counts_as_work
+            ? "bg-accent-soft text-accent border-accent/40"
+            : "border-border text-text-muted hover:text-text",
+        )}
+      >
+        Work
+      </button>
       <button
         disabled={pending}
         onClick={() => startTransition(() => setTagArchived(tag.id, !tag.archived))}

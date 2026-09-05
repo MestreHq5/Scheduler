@@ -1,16 +1,18 @@
 import { createClient } from "@/lib/supabase/server";
 import { Section } from "@/components/section";
-import { TagPill } from "@/components/tag-pill";
-import { TaskCheckbox } from "@/components/task-checkbox";
-import { BarChart } from "@/components/bar-chart";
-import { todayInTimezone, startOfWeek, weekDates } from "@/lib/dates";
+import { WeekCalendar } from "@/components/week-calendar";
+import { DeadlinesPanel, type DeadlineTask } from "@/components/deadlines-panel";
+import { TagTracker, type TrackedBlock } from "@/components/tag-tracker";
+import { WorkProgress } from "@/components/work-progress";
+import { addDays, todayInTimezone } from "@/lib/dates";
+import type { Block, Tag } from "@/lib/database.types";
 
 const QUOTE = "Ad astra per aspera.";
+const TRACKER_WINDOW_DAYS = 120;
+const DEADLINE_WINDOW_DAYS = 14;
 
-function timeToMinutes(t: string) {
-  const [h, m] = t.split(":").map(Number);
-  return h! * 60 + m!;
-}
+type BlockWithTag = Block & { tag: { label: string; color: string } | null };
+type BlockWithWork = Block & { tag: { label: string; color: string; counts_as_work: boolean } | null };
 
 export default async function HubPage() {
   const supabase = await createClient();
@@ -25,63 +27,34 @@ export default async function HubPage() {
     .single();
   const timezone = profile?.timezone ?? "Europe/Lisbon";
   const today = todayInTimezone(timezone);
-  const monday = startOfWeek(today);
-  const weekEnd = weekDates(monday)[6]!;
 
-  const [{ data: tags }, { data: todayBlocks }, { data: openTasks }, { data: deadlines }, { data: weekBlocks }] =
-    await Promise.all([
-      supabase.from("tags").select("*").eq("archived", false).order("sort_order"),
-      supabase
-        .from("blocks")
-        .select("*, tag:tags(label,color)")
-        .eq("archived", false)
-        .eq("date", today)
-        .order("start_time"),
-      supabase
-        .from("tasks")
-        .select("*, tag:tags(label,color)")
-        .eq("archived", false)
-        .eq("done", false)
-        .is("parent_id", null)
-        .order("created_at", { ascending: true })
-        .limit(6),
-      supabase
-        .from("tasks")
-        .select("*, tag:tags(label,color)")
-        .eq("archived", false)
-        .eq("done", false)
-        .not("due_date", "is", null)
-        .order("due_date", { ascending: true })
-        .limit(6),
-      supabase
-        .from("blocks")
-        .select("tag_id, start_time, end_time, tag:tags(label,color)")
-        .eq("archived", false)
-        .gte("date", monday)
-        .lte("date", weekEnd),
-    ]);
+  const [{ data: tags }, { data: todayBlocks }, { data: deadlineTasks }, { data: trackedBlocks }] = await Promise.all([
+    supabase.from("tags").select("*").eq("archived", false).order("sort_order"),
+    supabase
+      .from("blocks")
+      .select("*, tag:tags(label,color,counts_as_work)")
+      .eq("archived", false)
+      .eq("date", today)
+      .order("start_time"),
+    supabase
+      .from("tasks")
+      .select("id, title, done, due_date, tag:tags(label,color)")
+      .eq("archived", false)
+      .eq("done", false)
+      .not("due_date", "is", null)
+      .lte("due_date", addDays(today, DEADLINE_WINDOW_DAYS))
+      .order("due_date", { ascending: true }),
+    supabase
+      .from("blocks")
+      .select("id, tag_id, date, start_time, end_time, title")
+      .eq("archived", false)
+      .gte("date", today)
+      .lte("date", addDays(today, TRACKER_WINDOW_DAYS))
+      .order("date")
+      .order("start_time"),
+  ]);
 
-  const openTaskCountByTag = new Map<string, { label: string; color: string; count: number }>();
-  for (const t of (openTasks as unknown as { tag_id: string | null; tag: { label: string; color: string } | null }[]) ?? []) {
-    if (!t.tag_id || !t.tag) continue;
-    const cur = openTaskCountByTag.get(t.tag_id) ?? { label: t.tag.label, color: t.tag.color, count: 0 };
-    cur.count += 1;
-    openTaskCountByTag.set(t.tag_id, cur);
-  }
-
-  const hoursByTag = new Map<string, { label: string; color: string; hours: number }>();
-  for (const b of (weekBlocks as unknown as {
-    tag_id: string | null;
-    start_time: string;
-    end_time: string;
-    tag: { label: string; color: string } | null;
-  }[]) ?? []) {
-    if (!b.tag_id || !b.tag) continue;
-    const hrs = (timeToMinutes(b.end_time) - timeToMinutes(b.start_time)) / 60;
-    const cur = hoursByTag.get(b.tag_id) ?? { label: b.tag.label, color: b.tag.color, hours: 0 };
-    cur.hours += hrs;
-    hoursByTag.set(b.tag_id, cur);
-  }
+  const todayBlocksTyped = (todayBlocks as unknown as BlockWithWork[]) ?? [];
 
   const tzChanged =
     profile?.timezone_changed_at &&
@@ -104,76 +77,44 @@ export default async function HubPage() {
         )}
       </header>
 
-      <Section title="Today's blocks" href="/calendar">
-        {!todayBlocks?.length && <p className="text-sm text-text-muted">Nothing scheduled today.</p>}
-        <ul className="space-y-2">
-          {(todayBlocks as unknown as { id: string; title: string; start_time: string; end_time: string; tag: { label: string; color: string } | null }[] | null)?.map(
-            (b) => (
-              <li
-                key={b.id}
-                className="rounded-xl px-3.5 py-2.5 flex items-center justify-between"
-                style={{ backgroundColor: `${b.tag?.color ?? "#64748b"}18` }}
-              >
-                <span className="text-sm font-medium">{b.title}</span>
-                <span className="text-xs text-text-muted">
-                  {b.start_time.slice(0, 5)}–{b.end_time.slice(0, 5)}
-                </span>
-              </li>
-            ),
-          )}
-        </ul>
-      </Section>
+      <div className="mb-8">
+        <WorkProgress
+          blocks={todayBlocksTyped.map((b) => ({
+            start_time: b.start_time,
+            end_time: b.end_time,
+            countsAsWork: b.tag ? b.tag.counts_as_work : true,
+          }))}
+          timezone={timezone}
+        />
+      </div>
 
-      <Section title="Tasks" href="/tasks">
-        {!openTasks?.length && <p className="text-sm text-text-muted">Nothing open.</p>}
-        <ul className="space-y-1">
-          {(openTasks as unknown as { id: string; title: string; done: boolean; tag: { label: string; color: string } | null }[] | null)?.map(
-            (t) => (
-              <li key={t.id} className="flex items-center gap-3 px-1 py-1.5">
-                <TaskCheckbox id={t.id} done={t.done} />
-                <span className="text-sm flex-1">{t.title}</span>
-                <TagPill tag={t.tag} />
-              </li>
-            ),
-          )}
-        </ul>
-      </Section>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div>
+          <Section title="Deadlines" href="/tasks">
+            <DeadlinesPanel tasks={(deadlineTasks as unknown as DeadlineTask[]) ?? []} today={today} />
+          </Section>
 
-      <Section title="Deadlines" href="/tasks">
-        {!deadlines?.length && <p className="text-sm text-text-muted">No upcoming deadlines.</p>}
-        <ul className="space-y-1">
-          {(deadlines as unknown as { id: string; title: string; due_date: string; tag: { label: string; color: string } | null }[] | null)?.map(
-            (t) => (
-              <li key={t.id} className="flex items-center justify-between px-1 py-1.5">
-                <span className="text-sm">{t.title}</span>
-                <div className="flex items-center gap-2">
-                  <TagPill tag={t.tag} />
-                  <span className="text-xs text-text-muted">{t.due_date}</span>
-                </div>
-              </li>
-            ),
-          )}
-        </ul>
-      </Section>
-
-      <Section title="Stats">
-        <div className="grid grid-cols-1 gap-6">
-          <div>
-            <p className="text-xs uppercase tracking-wider text-text-muted mb-3">Open tasks per unit</p>
-            <BarChart bars={[...openTaskCountByTag.values()].map((v) => ({ label: v.label, value: v.count, color: v.color }))} />
-          </div>
-          <div>
-            <p className="text-xs uppercase tracking-wider text-text-muted mb-3">Hours scheduled this week</p>
-            <BarChart
-              bars={[...hoursByTag.values()].map((v) => ({ label: v.label, value: Math.round(v.hours * 10) / 10, color: v.color }))}
-              valueSuffix="h"
-            />
-          </div>
+          <Section title="Track a tag">
+            <TagTracker tags={(tags as Tag[]) ?? []} blocks={(trackedBlocks as unknown as TrackedBlock[]) ?? []} />
+          </Section>
         </div>
-      </Section>
+
+        <div>
+          <Section title="Today" href="/calendar">
+            <WeekCalendar
+              weekDates={[today]}
+              blocks={todayBlocksTyped as unknown as BlockWithTag[]}
+              tags={(tags as Tag[]) ?? []}
+              today={today}
+              timezone={timezone}
+              heightClassName="h-[60dvh]"
+            />
+          </Section>
+        </div>
+      </div>
 
       {!tags?.length && (
-        <p className="text-sm text-text-muted">
+        <p className="text-sm text-text-muted mt-6">
           No tags yet — add your curricular units in Settings to get started.
         </p>
       )}

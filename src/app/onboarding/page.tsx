@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Logo } from "@/components/logo";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -35,7 +34,8 @@ export default function OnboardingPage() {
     <main className="min-h-dvh flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
-          <Logo className="w-10 h-10 mx-auto mb-5" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" className="w-10 h-10 mx-auto mb-5 object-contain" />
           <p className="font-display italic text-xl text-accent mb-2 tracking-wide">One thing first,</p>
           <h1 className="font-display text-5xl">Welcome.</h1>
         </div>

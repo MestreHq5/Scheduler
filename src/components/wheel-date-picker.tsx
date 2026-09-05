@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { clsx } from "clsx";
 
 const ITEM_H = 36;
 const VISIBLE = 5;
@@ -94,6 +95,7 @@ function DatePanel({
   const [y, setY] = useState(initial.y);
   const [m, setM] = useState(initial.m);
   const [d, setD] = useState(initial.d);
+  const [focusedCol, setFocusedCol] = useState<"day" | "month" | "year">("day");
 
   const maxDay = daysInMonth(y, m);
   const clampedDay = Math.min(d, maxDay);
@@ -101,6 +103,37 @@ function DatePanel({
   const years = Array.from({ length: 12 }, (_, i) => new Date().getFullYear() - 2 + i);
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
   const days = Array.from({ length: maxDay }, (_, i) => i + 1);
+  const minYear = years[0]!;
+  const maxYear = years[years.length - 1]!;
+
+  // Keyboard nav: ←/→ move focus between day/month/year, ↑/↓ nudge the
+  // focused column's value, Enter confirms — same commit as the Done button.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowRight") {
+        e.preventDefault();
+        setFocusedCol((c) => (c === "day" ? "month" : "year"));
+      } else if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        setFocusedCol((c) => (c === "year" ? "month" : "day"));
+      } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const dir = e.key === "ArrowUp" ? -1 : 1;
+        if (focusedCol === "day") {
+          setD((cur) => Math.min(maxDay, Math.max(1, Math.min(cur, maxDay) + dir)));
+        } else if (focusedCol === "month") {
+          setM((cur) => Math.min(12, Math.max(1, cur + dir)));
+        } else {
+          setY((cur) => Math.min(maxYear, Math.max(minYear, cur + dir)));
+        }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        onCommit(`${y}-${pad2(m)}-${pad2(clampedDay)}`);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusedCol, maxDay, minYear, maxYear, y, m, clampedDay, onCommit]);
 
   return (
     <div
@@ -123,9 +156,28 @@ function DatePanel({
           style={{ top: PAD, height: ITEM_H }}
         />
         <div className="relative z-10 flex justify-center gap-2">
-          <WheelColumn items={days} value={clampedDay} onSettle={setD} />
-          <WheelColumn items={months} value={m} onSettle={setM} format={(n) => MONTH_LABELS[n - 1]!} />
-          <WheelColumn items={years} value={y} onSettle={setY} />
+          <WheelColumn
+            items={days}
+            value={clampedDay}
+            onSettle={setD}
+            focused={focusedCol === "day"}
+            onFocus={() => setFocusedCol("day")}
+          />
+          <WheelColumn
+            items={months}
+            value={m}
+            onSettle={setM}
+            format={(n) => MONTH_LABELS[n - 1]!}
+            focused={focusedCol === "month"}
+            onFocus={() => setFocusedCol("month")}
+          />
+          <WheelColumn
+            items={years}
+            value={y}
+            onSettle={setY}
+            focused={focusedCol === "year"}
+            onFocus={() => setFocusedCol("year")}
+          />
         </div>
       </div>
 
@@ -156,11 +208,15 @@ function WheelColumn({
   value,
   onSettle,
   format,
+  focused,
+  onFocus,
 }: {
   items: number[];
   value: number;
   onSettle: (n: number) => void;
   format?: (n: number) => string;
+  focused?: boolean;
+  onFocus?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -175,6 +231,19 @@ function WheelColumn({
     // time the picker opens (see DatePanel's key-free conditional render).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Follows external value changes (e.g. keyboard nav) that didn't come from
+  // this column's own scroll gesture.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const idx = Math.max(items.indexOf(value), 0);
+    setLiveIdx(idx);
+    if (Math.abs(el.scrollTop - idx * ITEM_H) > 0.5) {
+      el.scrollTo({ top: idx * ITEM_H, behavior: "smooth" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   function handleScroll() {
     const el = ref.current;
@@ -195,7 +264,11 @@ function WheelColumn({
     <div
       ref={ref}
       onScroll={handleScroll}
-      className="w-16 overflow-y-scroll snap-y snap-mandatory [&::-webkit-scrollbar]:hidden"
+      onPointerDown={onFocus}
+      className={clsx(
+        "w-16 overflow-y-scroll snap-y snap-mandatory rounded-lg [&::-webkit-scrollbar]:hidden transition-shadow",
+        focused && "ring-2 ring-accent",
+      )}
       style={{ height: ITEM_H * VISIBLE, scrollPaddingTop: PAD, scrollPaddingBottom: PAD, scrollbarWidth: "none" }}
     >
       <div style={{ height: PAD }} />

@@ -7,12 +7,27 @@ import { TagSelect } from "@/components/tag-select";
 import { deriveBlockTitle } from "@/lib/tags";
 import { WheelDatePicker } from "@/components/wheel-date-picker";
 import { CircularTimePicker } from "@/components/circular-time-picker";
+import { nowClockInTimezone } from "@/lib/dates";
 
-export function QuickAddBlock({ tags, defaultDate }: { tags: Tag[]; defaultDate: string }) {
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+/** Defaults a new block to the next full hour from now (e.g. 9:37 → 10:00–11:00). */
+function nextHourSlot(timezone: string): { start: string; end: string } {
+  const [hStr] = nowClockInTimezone(timezone).split(":");
+  const h = Number(hStr);
+  const startH = (h + 1) % 24;
+  const endH = (startH + 1) % 24;
+  return { start: `${pad2(startH)}:00`, end: `${pad2(endH)}:00` };
+}
+
+export function QuickAddBlock({ tags, defaultDate, timezone }: { tags: Tag[]; defaultDate: string; timezone: string }) {
   const [tagId, setTagId] = useState<string | null>(null);
   const [date, setDate] = useState(defaultDate);
-  const [start, setStart] = useState("09:00");
-  const [end, setEnd] = useState("11:00");
+  const [{ start, end }, setSlot] = useState(() => nextHourSlot(timezone));
+  const setStart = (v: string) => setSlot((s) => ({ ...s, start: v }));
+  const setEnd = (v: string) => setSlot((s) => ({ ...s, end: v }));
   const [details, setDetails] = useState("");
   const [pending, startTransition] = useTransition();
 

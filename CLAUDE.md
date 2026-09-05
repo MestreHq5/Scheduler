@@ -22,6 +22,9 @@ day-to-day, desktop for weekly (Sunday) planning.
 - `src/lib/database.types.ts` is hand-written to match
   `supabase/migrations/`; regenerate via `npx supabase gen types
   typescript --linked` instead of hand-editing further, once linked.
+- App logo/favicon is `public/logo.png` (also `src/app/icon.png`) — a
+  real asset now, not the earlier placeholder inline SVG. Used on
+  login/onboarding/404 and the sidebar.
 
 ## Rules that aren't obvious from the code
 
@@ -40,7 +43,8 @@ day-to-day, desktop for weekly (Sunday) planning.
   impossible (the moved task always has zero children when its own
   `parent_id` write happens) and covers every reparent case in one rule.
   Depth changes cascade to descendants via `tasks_after_depth_cascade`
-  (`0003_task_move_and_completed_at.sql`).
+  (`0003_task_move_and_completed_at.sql`). Task delete is permanent
+  (`deleteTask`) — the UI always confirms first, there's no undo/trash.
 - **Blocks store plain wall-clock `date`/`start_time`/`end_time`**, not a
   UTC instant — deliberately immune to timezone changes. `imported_events`
   (`.ics`/Google) DO store a real UTC instant, so a timezone change only
@@ -48,9 +52,12 @@ day-to-day, desktop for weekly (Sunday) planning.
   columns, future ones re-derive live) — see `src/lib/actions/profile.ts`.
 - **Calendar-date arithmetic must never round-trip through a local-time
   `Date` + `.toISOString()`** — that silently shifts results a day under
-  a positive UTC offset (this broke "next week" for a full round before
-  being caught). `src/lib/dates.ts` does all date-part math in pure UTC
-  millis; keep new date helpers there consistent with that.
+  a positive UTC offset. This broke "next week" *and*, separately,
+  `duplicateWeek` (its own inline instance of the same anti-pattern, not
+  caught by the first fix) before being caught. `src/lib/dates.ts` does
+  all date-part math in pure UTC millis (`addDays`, `daysBetween`,
+  `resolveRangePreset`, etc.) — always reuse those helpers for new date
+  math instead of writing another local-`Date` version.
 - **Tag groups replace the old fixed `kind: unit/other` split**
   (`0005_tag_groups.sql`): `tag_groups (label, color, is_study_unit,
   sort_order)`, tags get a nullable `group_id`. A group's
@@ -58,8 +65,16 @@ day-to-day, desktop for weekly (Sunday) planning.
   (`deriveBlockTitle`, `src/lib/tags.ts`) — falls back to the legacy
   `kind` column only for tags that predate groups and were never
   assigned one (kept, NOT NULL relaxed, not backfilled — no need, the
-  fallback covers it). New tags: picking a group pre-fills its color
-  (still editable); no group → a random preset color is issued.
+  fallback covers it). Picking a group pre-fills its color (still
+  editable, and re-fills whenever the group selection changes again,
+  both at tag creation and when re-grouping an existing tag); no group →
+  a random preset color. Color pickers everywhere are the custom
+  `ColorPicker` component (curated swatch grid + a tucked-away native
+  `<input type=color>` for anything else) — never the bare native input.
+- **A tag's `counts_as_work` flag** (`0006_tag_counts_as_work.sql`,
+  default `true`) drives the Hub's daily work-progress bar — lets Gym/
+  Free-style tags opt out of counting as "work". Tagless blocks always
+  count. Toggled per tag in Settings (styled pill, not a checkbox).
 - **Tag delete → referencing tasks/blocks become tagless** (`ON DELETE
   SET NULL`). **Tag archive → cascades to that tag's *future*
   tasks/blocks only**; past stays untouched, unarchive reverses exactly
@@ -81,17 +96,20 @@ day-to-day, desktop for weekly (Sunday) planning.
 ## Explicitly rejected — don't re-propose without new information
 
 - Task ↔ block relation with manual reassignment (see above).
-- Full calendar-grid view on the Hub — a compact deadlines list instead,
-  for mobile.
 - Side-by-side stats/column layouts on mobile — single-column by default,
   side-by-side only on wide viewports.
+- A full calendar-grid embedded on the Hub was once rejected for mobile —
+  since superseded: the Hub now embeds a single-*day* view (today only),
+  which is a deliberately smaller thing than the earlier "full grid"
+  proposal. Don't reflate it into a full week grid there.
 
 ## Data model
 
 Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
 
 - **`tags`**: `{ id, label, color, kind: "unit"|"other"|null (legacy),
-  group_id (nullable → tag_groups), archived, sort_order }`.
+  group_id (nullable → tag_groups), counts_as_work (default true),
+  archived, sort_order }`.
 - **`tag_groups`**: `{ id, label, color, is_study_unit, sort_order }`.
 - **`tasks`**: `{ id, title, tag_id, done (derived once it has children),
   due_date, notes, parent_id, depth (0–2), completed_at, created_at }`.
@@ -114,28 +132,58 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
 
 - **Task tree** (`src/components/task-tree.tsx`): 3 columns by depth
   (main/sub/sub-sub), not nested indentation. `expandedIds` (a `Set`)
-  lives centrally in `TaskTree` — a task's children only appear in the
-  next column while its id is in the set. Every card registers into a
-  shared `nodeRefs` map (via `TreeCtx`); a `useLayoutEffect` measures
-  parent/child `getBoundingClientRect()` pairs to draw cubic-bezier SVG
-  connectors between columns (hidden below `md` — columns stack, a "under
-  {parent}" caption substitutes). A live dashed "ghost" connector previews
-  the pending drop target while dragging, read straight from the DOM
-  during render (not through state). Card background is depth-based
-  (`--color-level-0/1/2`, pure gray scale, distinct from the navy-tinted
-  `surface`/`surface-2`). Drag/reparent mechanics (grip handle,
-  long-press, `moveTask`) are unchanged by any of this.
-- **Calendar week view** (`src/components/week-calendar.tsx`): `hourHeight`
+  lives centrally in `TaskTree`, **seeded on mount with every task that
+  has children** (fully open by default — collapsing is a user action,
+  not the initial state); a task's children only appear in the next
+  column while its id is in the set, and adding a first subtask via the
+  inline quick-add calls `ensureExpanded` so it's immediately visible.
+  Every card registers into a shared `nodeRefs` map (via `TreeCtx`); one
+  `useLayoutEffect` both (a) measures parent/child `getBoundingClientRect()`
+  pairs to draw cubic-bezier SVG connectors between columns (hidden below
+  `md` — columns stack, a "under {parent}" caption substitutes), and (b)
+  runs a hand-rolled FLIP animation (`prevRectsRef`, compare-then-
+  transform-then-clear-on-next-frame) so cards below an expand/collapse
+  slide to their new spot instead of snapping — connector geometry is
+  always read from the natural pre-transform layout first. Card
+  background is depth-based (`--color-level-0/1/2`, pure gray scale,
+  distinct from the navy-tinted `surface`/`surface-2`). Drag/reparent
+  mechanics (grip handle, long-press, `moveTask`) are unchanged by any of
+  this.
+- **Calendar week view** (`src/components/week-calendar.tsx`) now takes
+  an arbitrary-length `weekDates` array (grid columns and weekday labels
+  are both derived from the array/date, not hardcoded to 7/Monday-start)
+  — this is what lets the Hub reuse it as a single-day view. `hourHeight`
   is runtime-measured (`ResizeObserver` on the scroll container ÷ 12
-  visible hours), reused for all position/drag math. Drag-to-move is
-  optimistic (`useOptimistic`) inside the same transition as the
-  `moveBlock` call, so there's no flash back to the old spot. A stationary
-  pointerdown/up (under `CLICK_THRESHOLD_PX`) is treated as a click, not a
-  drag, opening `BlockEditModal` instead of firing a no-op move. A live
-  now-line uses `nowClockInTimezone(timezone)` (the profile's timezone,
-  not the browser's). Week nav lives in a separate `WeekNav` client
-  component (`router.push` inside `useTransition`, dims instead of
-  flashing while pending) — this file has no navigation itself.
+  visible hours), reused for all position/drag/resize math. Drag-to-move
+  and edge-resize (two small handles per block, independent `resize`
+  state from `drag`) are both optimistic (`useOptimistic`) inside the
+  same transition as the `moveBlock` call. A stationary pointerdown/up
+  (under `CLICK_THRESHOLD_PX`) is a click, not a drag — opens
+  `BlockEditModal` instead of firing a no-op move. A live now-line uses
+  `nowClockInTimezone(timezone)` (the profile's timezone, not the
+  browser's). Week nav lives in a separate `WeekNav` client component
+  (`router.push` inside `useTransition`, dims instead of flashing while
+  pending) — this file has no navigation itself. New blocks default to
+  the next full hour from now (`nextHourSlot` in `quick-add-block.tsx`).
+- **Date/time pickers** (`wheel-date-picker.tsx`, `circular-time-
+  picker.tsx`) both support full keyboard control now: the date wheel's
+  ←/→ move focus between day/month/year, ↑/↓ nudge the focused column's
+  value (a `WheelColumn` `useEffect` on `value` syncs its scroll position
+  to *external* changes, not just its own scroll gesture), Enter commits.
+  The time dial is a real 24h Android-style face — the hour step renders
+  outer (1–12) and inner (13–23 & 00) rings simultaneously, tap either
+  directly; ←/→ rotate the value by 1h (crossing rings naturally at the
+  wrap), ↑/↓ jump exactly ±12h (same clock position, other ring), Enter
+  commits. No AM/PM anywhere anymore.
+- **Hub** (`src/app/(app)/page.tsx`): a 2-column layout (stacks on
+  mobile) — left: `DeadlinesPanel` (due-date range presets: today/3
+  days/week/2 weeks) + `TagTracker` (pick tag(s), see each one's next 5
+  upcoming blocks — e.g. add a "Tests" tag and track every exam at a
+  glance); right: `WeekCalendar` reused with `weekDates={[today]}`. A
+  `WorkProgress` bar above both sums today's blocks whose tag
+  `counts_as_work` (tagless blocks always count) and shows elapsed vs.
+  total, blocks-in-progress counting proportionally so it creeps forward
+  smoothly rather than jumping once per finished block.
 - **Stats** (`src/app/(app)/stats/page.tsx`): server fetches a bounded
   12-month window of `blocks` + all non-archived `tasks` (every depth);
   `StatsExplorer` (tag multi-select + range-preset plot + insight card)
@@ -145,34 +193,71 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   is a dependency-free hand-rolled SVG chart (matches `bar-chart.tsx`'s
   existing no-library approach); series color is each tag's own `color`
   (not a generated palette), reusing the identity color already used for
-  pills/blocks everywhere else.
-- **NavShell** (`src/components/nav-shell.tsx`) content width: `/calendar`
-  and `/tasks` (+ `/tasks/archive`) get `max-w-full`; every other route is
-  capped `max-w-3xl`.
+  pills/blocks everywhere else. Insight card only shows period-over-period
+  % change and trend direction — most-active-weekday and a completion-
+  rate insight were tried and explicitly cut, don't re-add without
+  asking.
+- **NavShell** (`src/components/nav-shell.tsx`) content width: `/`,
+  `/calendar`, and `/tasks` (+ `/tasks/archive`) get `max-w-full`;
+  `/stats` gets `max-w-5xl`; everything else (Settings) stays `max-w-3xl`.
+  Sidebar nav rows are center-justified (icon+label as a group), not
+  left-aligned.
 - `contrastText()` (tag-color legibility) lives in `src/lib/color.ts`,
-  shared by the calendar and Stats.
+  shared by the calendar and Stats. `randomTagColor()` and
+  `deriveBlockTitle()` live in `src/lib/tags.ts`.
 
 ## Page review
 
-One line per page — update after each visual pass. Detailed notes for an
-in-progress review go in the "Open items" section below, then fold back
-to a single line here once resolved.
+Write notes directly under the relevant heading as you go through `npm
+run dev` — plain description, no need to phrase it as a question. Use a
+nested `Q:`/`A:` pair right there for anything that needs a decision
+before it can be built. Once a page's notes are addressed, this gets
+wiped back to an empty heading (or a short confirmed-status line) for
+the next pass — so it never carries more than one round's worth at a
+time. Everything built last round is written up in Architecture Notes/
+Rules above, not repeated here.
 
-- **Onboarding** — confirmed good.
-- **Hub** — not yet reviewed.
-- **Tasks** — v1 of the 3-column tree + tag groups just built, pending
-  visual review.
-- **Calendar** — click-to-edit modal, block descriptions, now-line, and
-  the next-week/flicker fixes just built, pending visual review.
-- **Settings** — confirmed good except: sync options untested; new "Tag
-  groups" section pending visual review.
-- **Stats** — full rewrite just built, pending visual review.
+### Onboarding
 
-## Open items
+Confirmed good.
 
-*(Nothing outstanding right now — add a `Q:`/`A:` pair here when a
-decision needs the user's input before building, or a short note when
-something needs a live look before it can be marked reviewed above.)*
+### Login
+
+New this pass — logo above "Scheduler," "Ad astra" tagline removed.
+
+
+### Hub
+
+Full rebuild this pass — day-view calendar (right), deadlines panel +
+tag tracker (left), work-progress bar. First real look.
+
+### Tasks
+
+New this pass — delete button, fully-open-by-default tree, wider
+column spacing, expand/collapse slide animation.
+
+### Calendar
+
+New this pass — next-hour default block time, arrow-key navigation on
+both pickers, 24h dual-ring time dial, block resize by dragging an
+edge, duplicate-week date fix.
+
+### Settings
+
+New this pass — "Study" toggle restyle, group→tag color inheritance,
+the custom swatch-grid color picker. Sync options (`.ics` feeds) still
+untested from a couple of rounds back.
+
+### Stats
+
+Width increased, insight card trimmed to 2 items. Otherwise as last
+confirmed — still wants a week of real use before being called
+bug-free.
+
+### Other
+
+New this pass — logo/favicon swap, sidebar rows centered.
+
 
 ## Not yet built
 
@@ -183,7 +268,6 @@ something needs a live look before it can be marked reviewed above.)*
   `google_calendar_connections`, wire the two disabled Settings buttons).
 - The deliberate visual-design polish pass (explicitly scoped separate
   from functional work).
-- A "current streak" Stats metric (consecutive days with a completed task
-  or logged block) — no natural home in the current plot/insight-
-  card/breakdown trio yet.
+- A "current streak" Stats metric — considered, not built (no natural
+  home in the current plot/insight-card/breakdown trio).
 - Deploy to Vercel for real multi-device testing against the shared DB.

@@ -6,7 +6,6 @@ import { clsx } from "clsx";
 import { useTransition } from "react";
 import { signOut } from "@/lib/actions/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { Logo } from "@/components/logo";
 
 const NAV = [
   { href: "/", label: "Hub", icon: HomeIcon },
@@ -25,7 +24,8 @@ export function NavShell({ email, children }: { email: string; children: React.R
       <aside className="hidden md:flex md:flex-col md:w-56 md:sticky md:top-0 md:h-dvh border-r border-border p-6 shrink-0">
         <div className="flex-1 flex flex-col justify-center">
           <div className="flex flex-col items-center text-center mb-8">
-            <Logo className="w-9 h-9 mb-2" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="" className="w-9 h-9 mb-2 object-contain" />
             <p className="font-display text-xl">Scheduler</p>
           </div>
           <nav className="flex flex-col gap-1">
@@ -36,7 +36,7 @@ export function NavShell({ email, children }: { email: string; children: React.R
                   key={href}
                   href={href}
                   className={clsx(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                    "flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
                     active ? "bg-surface-2 text-text" : "text-text-muted hover:text-text",
                   )}
                 >
@@ -71,9 +71,11 @@ export function NavShell({ email, children }: { email: string; children: React.R
         <main
           className={clsx(
             "mx-auto pt-10 pb-24 md:pb-10 md:pt-14",
-            pathname.startsWith("/calendar") || pathname.startsWith("/tasks")
+            pathname === "/" || pathname.startsWith("/calendar") || pathname.startsWith("/tasks")
               ? "max-w-full px-3 md:px-6"
-              : "max-w-3xl px-4 md:px-8",
+              : pathname.startsWith("/stats")
+                ? "max-w-5xl px-4 md:px-8"
+                : "max-w-3xl px-4 md:px-8",
           )}
         >
           {children}

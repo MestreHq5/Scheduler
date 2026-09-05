@@ -37,7 +37,8 @@ export default function LoginPage() {
     <main className="min-h-dvh flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
         <div className="text-center mb-10">
-          <p className="font-display italic text-xl text-accent mb-2 tracking-wide">Ad astra,</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" className="w-12 h-12 mx-auto mb-4 object-contain" />
           <h1 className="font-display text-5xl">Scheduler</h1>
         </div>
 

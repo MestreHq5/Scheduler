@@ -6,6 +6,7 @@ import type { TagGroup } from "@/lib/database.types";
 import { createTag } from "@/lib/actions/tags";
 import { randomTagColor } from "@/lib/tags";
 import { Dropdown } from "@/components/dropdown";
+import { ColorPicker } from "@/components/color-picker";
 
 const NO_GROUP = "__none__";
 
@@ -83,12 +84,7 @@ export function TagQuickAddModal({ groups }: { groups: TagGroup[] }) {
                 className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2 text-sm outline-none focus:border-accent"
               />
               <div className="flex gap-2 items-center">
-                <input
-                  type="color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  className="w-9 h-9 rounded-lg border border-border bg-surface-2 shrink-0"
-                />
+                <ColorPicker value={color} onChange={setColor} />
                 <Dropdown
                   value={groupId}
                   onChange={onGroupChange}

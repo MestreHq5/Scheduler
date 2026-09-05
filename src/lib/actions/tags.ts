@@ -21,7 +21,7 @@ export async function createTag(input: { label: string; color: string; group_id:
 
 export async function updateTag(
   id: string,
-  input: Partial<{ label: string; color: string; group_id: string | null }>,
+  input: Partial<{ label: string; color: string; group_id: string | null; counts_as_work: boolean }>,
 ) {
   const { supabase } = await currentUserId();
   const { error } = await supabase.from("tags").update(input).eq("id", id);
