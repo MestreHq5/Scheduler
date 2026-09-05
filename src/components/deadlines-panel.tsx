@@ -4,7 +4,7 @@ import { useState } from "react";
 import { clsx } from "clsx";
 import { TagPill } from "@/components/tag-pill";
 import { TaskCheckbox } from "@/components/task-checkbox";
-import { addDays } from "@/lib/dates";
+import { addDays, formatDateDMY } from "@/lib/dates";
 
 export type DeadlineTask = {
   id: string;
@@ -55,13 +55,15 @@ export function DeadlinesPanel({ tasks, today }: { tasks: DeadlineTask[]; today:
           {visible.map((t) => {
             const overdue = t.due_date < today;
             return (
-              <li key={t.id} className="flex items-center gap-3 px-1 py-1.5">
+              <li key={t.id} className="flex items-start gap-3 px-1 py-1.5">
                 <TaskCheckbox id={t.id} done={t.done} />
-                <span className="text-sm flex-1">{t.title}</span>
-                <TagPill tag={t.tag} />
-                <span className={clsx("text-xs shrink-0", overdue ? "text-danger" : "text-text-muted")}>
-                  {t.due_date === today ? "today" : t.due_date.slice(5)}
-                </span>
+                <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <span className="text-sm">{t.title}</span>
+                  <TagPill tag={t.tag} />
+                  <span className={clsx("text-xs shrink-0", overdue ? "text-danger" : "text-text-muted")}>
+                    {t.due_date === today ? "today" : formatDateDMY(t.due_date)}
+                  </span>
+                </div>
               </li>
             );
           })}

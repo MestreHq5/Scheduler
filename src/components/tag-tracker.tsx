@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { Tag } from "@/lib/database.types";
 import { contrastText } from "@/lib/color";
+import { formatDateDMY } from "@/lib/dates";
 
 const MAX_PER_TAG = 5;
 
@@ -71,10 +72,10 @@ export function TagTracker({ tags, blocks }: { tags: Tag[]; blocks: TrackedBlock
                   ) : (
                     <ul className="space-y-1">
                       {upcoming.map((b) => (
-                        <li key={b.id} className="flex items-center justify-between text-sm px-1">
-                          <span className="truncate">{b.title}</span>
-                          <span className="text-xs text-text-muted shrink-0 ml-2">
-                            {b.date.slice(5)} · {b.start_time.slice(0, 5)}
+                        <li key={b.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-sm px-1">
+                          <span>{b.title}</span>
+                          <span className="text-xs text-text-muted shrink-0">
+                            {formatDateDMY(b.date)} · {b.start_time.slice(0, 5)}
                           </span>
                         </li>
                       ))}

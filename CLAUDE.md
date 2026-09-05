@@ -130,25 +130,34 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
 
 ## Architecture notes (non-obvious implementation details)
 
-- **Task tree** (`src/components/task-tree.tsx`): 3 columns by depth
-  (main/sub/sub-sub), not nested indentation. `expandedIds` (a `Set`)
-  lives centrally in `TaskTree`, **seeded on mount with every task that
-  has children** (fully open by default — collapsing is a user action,
-  not the initial state); a task's children only appear in the next
-  column while its id is in the set, and adding a first subtask via the
-  inline quick-add calls `ensureExpanded` so it's immediately visible.
-  Every card registers into a shared `nodeRefs` map (via `TreeCtx`); one
-  `useLayoutEffect` both (a) measures parent/child `getBoundingClientRect()`
-  pairs to draw cubic-bezier SVG connectors between columns (hidden below
-  `md` — columns stack, a "under {parent}" caption substitutes), and (b)
-  runs a hand-rolled FLIP animation (`prevRectsRef`, compare-then-
-  transform-then-clear-on-next-frame) so cards below an expand/collapse
-  slide to their new spot instead of snapping — connector geometry is
-  always read from the natural pre-transform layout first. Card
-  background is depth-based (`--color-level-0/1/2`, pure gray scale,
-  distinct from the navy-tinted `surface`/`surface-2`). Drag/reparent
-  mechanics (grip handle, long-press, `moveTask`) are unchanged by any of
-  this.
+- **Task tree** (`src/components/task-tree.tsx`): one 3-column
+  (main/sub/sub-sub) grid **per root task**, stacked vertically — not one
+  tree-wide set of 3 columns. This is what guarantees a root's card
+  always starts below the *entire* expanded subtree of the root above it
+  (no cross-root bleed) — a real bug when it was tree-wide (a short
+  subtree in one root left the next root's card floating beside a much
+  taller neighboring column). No connector lines/nodes and no FLIP
+  slide-on-expand animation anymore — both were cut (SVG connector
+  geometry was fragile and broke often; the columned-per-root spacing
+  now carries the "which subtree is this in" signal on its own).
+  `expandedIds` (a `Set`) still lives centrally in `TaskTree`, **seeded
+  on mount with every task that has children** (fully open by default —
+  collapsing is a user action, not the initial state); a task's children
+  only render in the next column while its id is in the set, and adding
+  a first subtask via the inline quick-add calls `ensureExpanded` so
+  it's immediately visible. Drag-reparent (grip handle, long-press,
+  `moveTask`) is now **optimistic** (`useOptimistic`, mirroring
+  `week-calendar.tsx`'s pattern) — `applyOptimisticMove` locally
+  replays the same detach-children-then-reparent rule `moveTask` runs
+  server-side so the move is instant instead of waiting on a full
+  round-trip + revalidate; a failed move surfaces a dismissable error
+  banner and self-reverts. Card background is depth-based
+  (`--color-level-0/1/2`, pure gray scale, distinct from the
+  navy-tinted `surface`/`surface-2`). Below `md` everything still
+  stacks into one column, so a group is now root → its children → its
+  grandchildren, in that order — also fixes a pre-existing mobile bug
+  where all roots listed first, then every child of every root mixed
+  together, then every grandchild.
 - **Calendar week view** (`src/components/week-calendar.tsx`) now takes
   an arbitrary-length `weekDates` array (grid columns and weekday labels
   are both derived from the array/date, not hardcoded to 7/Monday-start)
@@ -197,14 +206,36 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   % change and trend direction — most-active-weekday and a completion-
   rate insight were tried and explicitly cut, don't re-add without
   asking.
-- **NavShell** (`src/components/nav-shell.tsx`) content width: `/`,
-  `/calendar`, and `/tasks` (+ `/tasks/archive`) get `max-w-full`;
-  `/stats` gets `max-w-5xl`; everything else (Settings) stays `max-w-3xl`.
-  Sidebar nav rows are center-justified (icon+label as a group), not
-  left-aligned.
+- **NavShell** (`src/components/nav-shell.tsx`) content width: every
+  page shares the same `max-w-5xl px-4 md:px-8` — was split (`max-w-full`
+  for `/`, `/calendar`, `/tasks` + `/tasks/archive`; `max-w-3xl` for
+  Settings) until explicitly unified to match Stats everywhere, so the
+  calendar/task-tree pages are no longer edge-to-edge on wide viewports.
+  Sidebar nav rows, the logo/title block, and the bottom email/theme-
+  toggle/log-out group are all centered **as shrink-to-fit groups**
+  (`items-center` on their flex-column parents, no `w-full` on the
+  buttons) — a plain `w-full` button/link stretches its hover/active
+  background the full column width, which reads as left-aligned even
+  though the icon+label inside is itself centered. The dotted divider
+  above the email is a fixed `w-28`, not `flex-1` on both sides, so it
+  doesn't visually outspan that now-narrower centered group beneath it.
+  The sidebar/content divider is a soft top-to-bottom gradient line
+  (absolutely positioned `w-px` span with a `via-border` gradient), not
+  a flat `border-r`. `html { scrollbar-gutter: stable }` (`globals.css`)
+  keeps the sidebar from shifting a few px when navigating between a
+  page tall enough to need a scrollbar and one that isn't.
+- Light theme (`globals.css`) is deliberately a step darker than a raw
+  white — `--scheduler-bg`/`surface`/`surface-2` are all light *grays*,
+  not `#fff`, and body text gets `font-weight: 500` (Space Grotesk 500
+  is loaded in `layout.tsx`) — plain 400-weight text on a near-white
+  ground read as washed out.
 - `contrastText()` (tag-color legibility) lives in `src/lib/color.ts`,
   shared by the calendar and Stats. `randomTagColor()` and
-  `deriveBlockTitle()` live in `src/lib/tags.ts`.
+  `deriveBlockTitle()` live in `src/lib/tags.ts`. `formatDateDMY()`
+  (`src/lib/dates.ts`) is the one user-facing date format in the app —
+  `DD/MM` or `DD/MM/YYYY`, always zero-padded — `WheelDatePicker`
+  computes it once and hands it to callers as `label` alongside the raw
+  `value`; never render a raw `YYYY-MM-DD` or a `.slice(5)` fragment.
 
 ## Page review
 
@@ -228,37 +259,43 @@ New this pass — logo above "Scheduler," "Ad astra" tagline removed.
 
 ### Hub
 
-Full rebuild this pass — day-view calendar (right), deadlines panel +
-tag tracker (left), work-progress bar. First real look.
+New this pass — "View all" now sits right next to the "Deadlines"
+heading instead of far-right of the row; a deadline/tracked-block's tag
++ date now sit right after its title instead of flush against the far
+edge; the gap between the two Hub columns is wider; all dates render
+`DD/MM` via `formatDateDMY()`.
 
 ### Tasks
 
-New this pass — delete button, fully-open-by-default tree, wider
-column spacing, expand/collapse slide animation.
+New this pass — each root task is now its own 3-column group (see
+Architecture Notes), so a root always starts below the *entire*
+expanded subtree of the root above it; connector lines/nodes and the
+FLIP slide animation are both gone; drag-reparent is optimistic now
+(instant move, error banner + auto-revert on failure).
 
 ### Calendar
 
-New this pass — next-hour default block time, arrow-key navigation on
-both pickers, 24h dual-ring time dial, block resize by dragging an
-edge, duplicate-week date fix.
+Confirmed good — margin now matches the rest of the app (see Other).
 
 ### Settings
 
-New this pass — "Study" toggle restyle, group→tag color inheritance,
-the custom swatch-grid color picker. Sync options (`.ics` feeds) still
-untested from a couple of rounds back.
+Confirmed good — margin now matches the rest of the app (see Other).
 
 ### Stats
 
-Width increased, insight card trimmed to 2 items. Otherwise as last
-confirmed — still wants a week of real use before being called
+Confirmed good — still wants a week of real use before being called
 bug-free.
 
 ### Other
 
-New this pass — logo/favicon swap, sidebar rows centered.
-
-
+New this pass — logo/favicon swap (new background-less mark, square-
+cropped from the source art); sidebar delimiter is now a soft gradient
+fade instead of a flat border; logo/title, nav tabs, and the bottom
+email/theme-toggle/log-out are all centered as shrink-to-fit groups;
+all pages share the same horizontal padding as Stats; light theme
+background is a step darker and body text is heavier; the sidebar no
+longer shifts a few px between tall and short pages
+(`scrollbar-gutter: stable`).
 ## Not yet built
 
 - Automatic/periodic `.ics` sync (currently manual "Sync now") — port

@@ -58,13 +58,13 @@ export function QuickAddBlock({ tags, defaultDate, timezone }: { tags: Tag[]; de
           onChange={(next) => next && setDate(next)}
           title="Block date"
           allowClear={false}
-          renderTrigger={({ value, open }) => (
+          renderTrigger={({ label, open }) => (
             <button
               type="button"
               onClick={open}
               className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent"
             >
-              {value}
+              {label}
             </button>
           )}
         />
@@ -101,7 +101,7 @@ export function QuickAddBlock({ tags, defaultDate, timezone }: { tags: Tag[]; de
           value={details}
           onChange={(e) => setDetails(e.target.value)}
           maxLength={30}
-          placeholder="Details (e.g. room)"
+          placeholder="Details (optional)"
           className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent w-36"
         />
         <button

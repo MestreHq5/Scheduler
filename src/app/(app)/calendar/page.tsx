@@ -3,7 +3,7 @@ import { QuickAddBlock } from "@/components/quick-add-block";
 import { WeekCalendar } from "@/components/week-calendar";
 import { DuplicateWeekButton } from "@/components/duplicate-week-button";
 import { WeekNav } from "@/components/week-nav";
-import { addDays, startOfWeek, todayInTimezone, weekDates } from "@/lib/dates";
+import { addDays, formatDateDMY, startOfWeek, todayInTimezone, weekDates } from "@/lib/dates";
 import type { Block } from "@/lib/database.types";
 
 type BlockWithTag = Block & { tag: { label: string; color: string } | null };
@@ -55,7 +55,7 @@ export default async function CalendarPage({
         <QuickAddBlock tags={tags ?? []} defaultDate={today} timezone={timezone} />
       </div>
 
-      <WeekNav prevWeek={prevWeek} nextWeek={nextWeek} label={`${monday} – ${weekEnd}`} />
+      <WeekNav prevWeek={prevWeek} nextWeek={nextWeek} label={`${formatDateDMY(monday)} – ${formatDateDMY(weekEnd)}`} />
 
       <WeekCalendar
         weekDates={dates}

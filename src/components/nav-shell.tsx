@@ -21,14 +21,15 @@ export function NavShell({ email, children }: { email: string; children: React.R
 
   return (
     <div className="min-h-dvh md:flex md:mx-auto md:max-w-[1440px]">
-      <aside className="hidden md:flex md:flex-col md:w-56 md:sticky md:top-0 md:h-dvh border-r border-border p-6 shrink-0">
-        <div className="flex-1 flex flex-col justify-center">
+      <aside className="hidden md:flex md:flex-col md:w-56 md:sticky md:top-0 md:h-dvh relative p-6 shrink-0">
+        <span className="pointer-events-none absolute inset-y-0 right-0 w-px bg-gradient-to-b from-transparent via-border to-transparent" />
+        <div className="flex-1 flex flex-col items-center justify-center">
           <div className="flex flex-col items-center text-center mb-8">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo.png" alt="" className="w-9 h-9 mb-2 object-contain" />
             <p className="font-display text-xl">Scheduler</p>
           </div>
-          <nav className="flex flex-col gap-1">
+          <nav className="flex flex-col items-center gap-1">
             {NAV.map(({ href, label, icon: Icon }) => {
               const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
               return (
@@ -47,19 +48,19 @@ export function NavShell({ email, children }: { email: string; children: React.R
             })}
           </nav>
         </div>
-        <div className="mt-auto pt-6">
-          <div className="flex items-center gap-2 mb-5">
+        <div className="mt-auto pt-6 flex flex-col items-center">
+          <div className="flex items-center gap-2 mb-5 w-28">
             <span className="h-px flex-1 bg-gradient-to-r from-transparent to-border" />
             <span className="w-1.5 h-1.5 rounded-full bg-border" />
             <span className="h-px flex-1 bg-gradient-to-l from-transparent to-border" />
           </div>
-          <p className="text-xs text-text-muted truncate mb-3">{email}</p>
+          <p className="text-xs text-text-muted truncate max-w-[10rem] mb-3 text-center">{email}</p>
           <ThemeToggle />
           <button
             type="button"
             disabled={pending}
             onClick={() => startTransition(() => signOut())}
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm w-full text-text-muted hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-50"
+            className="flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm text-text-muted hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-50"
           >
             <LogoutIcon />
             {pending ? "Logging out…" : "Log out"}
@@ -68,16 +69,7 @@ export function NavShell({ email, children }: { email: string; children: React.R
       </aside>
 
       <div className="flex-1 min-w-0">
-        <main
-          className={clsx(
-            "mx-auto pt-10 pb-24 md:pb-10 md:pt-14",
-            pathname === "/" || pathname.startsWith("/calendar") || pathname.startsWith("/tasks")
-              ? "max-w-full px-3 md:px-6"
-              : pathname.startsWith("/stats")
-                ? "max-w-5xl px-4 md:px-8"
-                : "max-w-3xl px-4 md:px-8",
-          )}
-        >
+        <main className="mx-auto pt-10 pb-24 md:pb-10 md:pt-14 px-4 md:px-8 max-w-5xl">
           {children}
         </main>
       </div>

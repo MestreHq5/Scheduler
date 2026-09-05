@@ -9,6 +9,7 @@ import { contrastText } from "@/lib/color";
 import {
   addDays,
   daysBetween,
+  formatDateDMY,
   RANGE_PRESET_LABELS,
   resolveRangePreset,
   startOfWeek,
@@ -87,7 +88,7 @@ export function StatsExplorer({
     }),
   }));
 
-  const categories = weeks.map((w) => w.weekStart.slice(5));
+  const categories = weeks.map((w) => formatDateDMY(w.weekStart));
 
   const insights = useMemo(() => {
     if (selectedTags.length === 0 || end < start) return [];
@@ -170,9 +171,9 @@ export function StatsExplorer({
             onChange={(v) => v && setCustomStart(v)}
             allowClear={false}
             title="Start date"
-            renderTrigger={({ value, open }) => (
+            renderTrigger={({ label, open }) => (
               <button type="button" onClick={open} className="rounded-lg bg-surface-2 border border-border px-2 py-1.5 text-sm">
-                {value}
+                {label}
               </button>
             )}
           />
@@ -182,9 +183,9 @@ export function StatsExplorer({
             onChange={(v) => v && setCustomEnd(v)}
             allowClear={false}
             title="End date"
-            renderTrigger={({ value, open }) => (
+            renderTrigger={({ label, open }) => (
               <button type="button" onClick={open} className="rounded-lg bg-surface-2 border border-border px-2 py-1.5 text-sm">
-                {value}
+                {label}
               </button>
             )}
           />

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { clsx } from "clsx";
+import { formatDateDMY } from "@/lib/dates";
 
 const ITEM_H = 36;
 const VISIBLE = 5;
@@ -39,7 +40,7 @@ export function WheelDatePicker({
 }: {
   value: string | null;
   onChange: (next: string | null) => void;
-  renderTrigger: (opts: { value: string | null; open: () => void }) => React.ReactNode;
+  renderTrigger: (opts: { value: string | null; label: string | null; open: () => void }) => React.ReactNode;
   title?: string;
   allowClear?: boolean;
 }) {
@@ -56,7 +57,7 @@ export function WheelDatePicker({
 
   return (
     <>
-      {renderTrigger({ value, open: () => setOpen(true) })}
+      {renderTrigger({ value, label: value ? formatDateDMY(value) : null, open: () => setOpen(true) })}
       {open && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-6"

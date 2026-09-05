@@ -34,7 +34,7 @@ export function IcsFeedSettings({
         />
         {feed?.last_synced_at && (
           <p className="text-xs text-text-muted shrink-0">
-            last synced {new Date(feed.last_synced_at).toLocaleString()}
+            last synced {new Date(feed.last_synced_at).toLocaleString("en-GB")}
           </p>
         )}
       </div>

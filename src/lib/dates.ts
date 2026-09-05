@@ -100,6 +100,16 @@ export function daysBetween(startStr: string, endStr: string): number {
   return Math.round((toUtcMillis(endStr) - toUtcMillis(startStr)) / 86_400_000);
 }
 
+/**
+ * Formats a YYYY-MM-DD date string as day/month (year optional), always
+ * zero-padded — the one date format used everywhere in the UI. Never render
+ * a raw YYYY-MM-DD or a `.slice(5)` MM-DD fragment to the user directly.
+ */
+export function formatDateDMY(dateStr: string, withYear = false): string {
+  const [y, m, d] = dateStr.split("-");
+  return withYear ? `${d}/${m}/${y}` : `${d}/${m}`;
+}
+
 export type RangePreset = "thisWeek" | "lastWeek" | "thisMonth" | "lastMonth" | "last3m" | "last6m" | "last12m";
 
 export const RANGE_PRESET_LABELS: Record<RangePreset, string> = {

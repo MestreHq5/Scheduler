@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransit
 import { clsx } from "clsx";
 import type { Block, Tag } from "@/lib/database.types";
 import { deleteBlock, moveBlock } from "@/lib/actions/blocks";
-import { nowClockInTimezone } from "@/lib/dates";
+import { formatDateDMY, nowClockInTimezone } from "@/lib/dates";
 import { contrastText } from "@/lib/color";
 import { BlockEditModal } from "@/components/block-edit-modal";
 
@@ -319,7 +319,7 @@ export function WeekCalendar({
               )}
             >
               <p className="text-xs font-medium">{weekday}</p>
-              <p className="text-[11px] text-text-muted">{date.slice(5)}</p>
+              <p className="text-[11px] text-text-muted">{formatDateDMY(date)}</p>
             </div>
           );
         })}

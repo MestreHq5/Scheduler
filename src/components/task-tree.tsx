@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { clsx } from "clsx";
 import type { Tag, Task } from "@/lib/database.types";
 import { TaskCheckbox } from "@/components/task-checkbox";
@@ -9,6 +9,7 @@ import { TagSelect } from "@/components/tag-select";
 import { QuickAddTask } from "@/components/quick-add-task";
 import { WheelDatePicker } from "@/components/wheel-date-picker";
 import { deleteTask, updateTask, moveTask } from "@/lib/actions/tasks";
+import { formatDateDMY } from "@/lib/dates";
 
 const ROOT_DROP = "ROOT";
 
@@ -24,6 +25,7 @@ const LEVEL_CARD: string[] = [
 ];
 
 type DragVisual = { id: string; x: number; y: number; overId: string | null };
+type MoveUpdate = { id: string; newParentId: string | null };
 
 interface TreeCtxValue {
   drag: DragVisual | null;
@@ -32,16 +34,31 @@ interface TreeCtxValue {
   expandedIds: Set<string>;
   toggleExpand: (id: string) => void;
   ensureExpanded: (id: string) => void;
-  registerRef: (id: string, el: HTMLElement | null) => void;
 }
 
 const TreeCtx = createContext<TreeCtxValue | null>(null);
 
-type Connector = { id: string; x1: number; y1: number; x2: number; y2: number };
-
-function bezierPath(x1: number, y1: number, x2: number, y2: number) {
-  const midX = (x1 + x2) / 2;
-  return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+/**
+ * Applies a drag-reparent to the local task list immediately, mirroring what
+ * `moveTask` (src/lib/actions/tasks.ts) does server-side: the moved task's
+ * direct children are promoted to independent roots first (their own
+ * children, one level deeper, cascade down by one depth), then the moved
+ * task itself takes on the new parent. Approximate but self-corrects once
+ * the server action resolves and the page revalidates.
+ */
+function applyOptimisticMove(state: Task[], update: MoveUpdate): Task[] {
+  const byId = new Map(state.map((t) => [t.id, t]));
+  const moved = byId.get(update.id);
+  if (!moved) return state;
+  const newParent = update.newParentId ? (byId.get(update.newParentId) ?? null) : null;
+  const movedNewDepth = newParent ? newParent.depth + 1 : 0;
+  const promotedIds = new Set(state.filter((t) => t.parent_id === update.id).map((t) => t.id));
+  return state.map((t) => {
+    if (t.id === update.id) return { ...t, parent_id: update.newParentId, depth: movedNewDepth };
+    if (promotedIds.has(t.id)) return { ...t, parent_id: null, depth: 0 };
+    if (t.parent_id && promotedIds.has(t.parent_id)) return { ...t, depth: 1 };
+    return t;
+  });
 }
 
 export function TaskTree({
@@ -53,17 +70,19 @@ export function TaskTree({
   tags: Tag[];
   dragHoldMs?: number;
 }) {
+  const [optimisticTasks, applyMove] = useOptimistic(tasks, applyOptimisticMove);
+
   const byParent = useMemo(() => {
     const m = new Map<string | null, Task[]>();
-    for (const t of tasks) {
+    for (const t of optimisticTasks) {
       const key = t.parent_id;
       if (!m.has(key)) m.set(key, []);
       m.get(key)!.push(t);
     }
     return m;
-  }, [tasks]);
+  }, [optimisticTasks]);
 
-  const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
+  const byId = useMemo(() => new Map(optimisticTasks.map((t) => [t.id, t])), [optimisticTasks]);
 
   const [drag, setDrag] = useState<DragVisual | null>(null);
   // Fully open on load — collapsing is a user action, not a default. Seeded
@@ -77,14 +96,17 @@ export function TaskTree({
     }
     return parentIds;
   });
+  const [error, setError] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const dragRef = useRef<{ id: string; pointerId: number } | null>(null);
   const invalidIdsRef = useRef<Set<string>>(new Set());
   const pendingHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const nodeRefs = useRef<Map<string, HTMLElement>>(new Map());
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [connectors, setConnectors] = useState<Connector[]>([]);
-  const [resizeTick, setResizeTick] = useState(0);
+
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 6000);
+    return () => clearTimeout(t);
+  }, [error]);
 
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {
@@ -97,11 +119,6 @@ export function TaskTree({
 
   function ensureExpanded(id: string) {
     setExpandedIds((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
-  }
-
-  function registerRef(id: string, el: HTMLElement | null) {
-    if (el) nodeRefs.current.set(id, el);
-    else nodeRefs.current.delete(id);
   }
 
   function collectInvalidIds(taskId: string) {
@@ -140,6 +157,18 @@ export function TaskTree({
     setDrag({ id: dragRef.current.id, x: e.clientX, y: e.clientY, overId });
   }
 
+  function runMove(id: string, newParentId: string | null) {
+    const movedTitle = byId.get(id)?.title ?? "Task";
+    startTransition(async () => {
+      applyMove({ id, newParentId });
+      try {
+        await moveTask(id, newParentId);
+      } catch (e) {
+        setError(`"${movedTitle}" couldn't be moved — ${e instanceof Error ? e.message : "something went wrong"}.`);
+      }
+    });
+  }
+
   function onWindowPointerUp(e: PointerEvent) {
     if (!dragRef.current || e.pointerId !== dragRef.current.pointerId) return;
     const { id } = dragRef.current;
@@ -149,15 +178,11 @@ export function TaskTree({
     setDrag(null);
 
     if (overId === ROOT_DROP) {
-      startTransition(() => {
-        moveTask(id, null);
-      });
+      runMove(id, null);
     } else if (overId && !invalidIdsRef.current.has(overId)) {
       const target = byId.get(overId);
       if (target && target.depth < 2) {
-        startTransition(() => {
-          moveTask(id, overId);
-        });
+        runMove(id, overId);
       }
     }
   }
@@ -216,117 +241,19 @@ export function TaskTree({
   }
 
   const roots = byParent.get(null) ?? [];
-  const col1: Task[] = [];
-  for (const r of roots) {
-    if (expandedIds.has(r.id)) col1.push(...(byParent.get(r.id) ?? []));
-  }
-  const col2: Task[] = [];
-  for (const s of col1) {
-    if (expandedIds.has(s.id)) col2.push(...(byParent.get(s.id) ?? []));
-  }
-
   const draggedTask = drag ? byId.get(drag.id) : null;
 
-  const prevRectsRef = useRef<Map<string, DOMRect>>(new Map());
-
-  // Recompute connector geometry whenever the layout could have shifted:
-  // task list changes, expand/collapse, or a resize of the tree container
-  // (the ResizeObserver below also catches inline form/editing height
-  // changes, so this doesn't need to track every possible cause by hand).
-  // The same pass also runs a FLIP animation for any surviving card that
-  // moved since the last layout (e.g. cards below a branch that just
-  // expanded/collapsed sliding to their new spot) — connector geometry is
-  // read first, from the natural (untransformed) layout, before any
-  // animation transform gets applied.
-  useLayoutEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
-    const next: Connector[] = [];
-
-    function link(parentId: string, childId: string) {
-      const p = nodeRefs.current.get(parentId);
-      const c = nodeRefs.current.get(childId);
-      if (!p || !c) return;
-      const pr = p.getBoundingClientRect();
-      const cr = c.getBoundingClientRect();
-      next.push({
-        id: `${parentId}:${childId}`,
-        x1: pr.right - containerRect.left,
-        y1: pr.top + pr.height / 2 - containerRect.top,
-        x2: cr.left - containerRect.left,
-        y2: cr.top + cr.height / 2 - containerRect.top,
-      });
-    }
-
-    for (const r of roots) {
-      if (!expandedIds.has(r.id)) continue;
-      for (const s of byParent.get(r.id) ?? []) link(r.id, s.id);
-    }
-    for (const s of col1) {
-      if (!expandedIds.has(s.id)) continue;
-      for (const g of byParent.get(s.id) ?? []) link(s.id, g.id);
-    }
-
-    setConnectors(next);
-
-    const prevRects = prevRectsRef.current;
-    const currentRects = new Map<string, DOMRect>();
-    for (const [id, el] of nodeRefs.current) {
-      const rect = el.getBoundingClientRect();
-      currentRects.set(id, rect);
-      const prev = prevRects.get(id);
-      if (prev) {
-        const dy = prev.top - rect.top;
-        if (Math.abs(dy) > 1) {
-          el.style.transition = "none";
-          el.style.transform = `translateY(${dy}px)`;
-          void el.getBoundingClientRect(); // force reflow before switching to the transition
-          requestAnimationFrame(() => {
-            el.style.transition = "transform 280ms ease";
-            el.style.transform = "";
-          });
-        }
-      }
-    }
-    prevRectsRef.current = currentRects;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, expandedIds, resizeTick]);
-
-  useLayoutEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver(() => setResizeTick((t) => t + 1));
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  // Live "ghost" connector while dragging, from the dragged card to whatever
-  // valid drop target is currently under the pointer, so the pending
-  // connection is visible before drop. Read straight from the DOM at render
-  // time since it only feeds this frame's SVG output, not persisted state.
-  let ghost: { x1: number; y1: number; x2: number; y2: number } | null = null;
-  if (drag?.overId && drag.overId !== ROOT_DROP && !invalidIdsRef.current.has(drag.overId) && containerRef.current) {
-    const target = byId.get(drag.overId);
-    const from = nodeRefs.current.get(drag.id);
-    const to = nodeRefs.current.get(drag.overId);
-    if (target && target.depth < 2 && from && to) {
-      const containerRect = containerRef.current.getBoundingClientRect();
-      const fr = from.getBoundingClientRect();
-      const tr = to.getBoundingClientRect();
-      ghost = {
-        x1: fr.right - containerRect.left,
-        y1: fr.top + fr.height / 2 - containerRect.top,
-        x2: tr.left - containerRect.left,
-        y2: tr.top + tr.height / 2 - containerRect.top,
-      };
-    }
-  }
-
   return (
-    <TreeCtx.Provider
-      value={{ drag, invalidIdsRef, onGripPointerDown, expandedIds, toggleExpand, ensureExpanded, registerRef }}
-    >
+    <TreeCtx.Provider value={{ drag, invalidIdsRef, onGripPointerDown, expandedIds, toggleExpand, ensureExpanded }}>
+      {error && (
+        <div className="mb-3 flex items-start justify-between gap-3 rounded-xl border border-danger/40 bg-danger/10 px-4 py-2.5 text-sm text-danger">
+          <span>{error}</span>
+          <button type="button" onClick={() => setError(null)} className="shrink-0 hover:opacity-70" aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
+
       {drag && (
         <div
           data-task-drop-root
@@ -344,48 +271,38 @@ export function TaskTree({
       {roots.length === 0 ? (
         <p className="text-sm text-text-muted">Nothing here yet.</p>
       ) : (
-        <div ref={containerRef} className="relative">
-          <svg className="absolute inset-0 hidden md:block" style={{ width: "100%", height: "100%" }}>
-            {connectors.map((c) => (
-              <g key={c.id}>
-                <path
-                  d={bezierPath(c.x1, c.y1, c.x2, c.y2)}
-                  fill="none"
-                  stroke="var(--color-border)"
-                  strokeWidth={1.5}
-                />
-                <circle cx={c.x1} cy={c.y1} r={2.5} fill="var(--color-border)" />
-                <circle cx={c.x2} cy={c.y2} r={2.5} fill="var(--color-border)" />
-              </g>
-            ))}
-            {ghost && (
-              <path
-                d={bezierPath(ghost.x1, ghost.y1, ghost.x2, ghost.y2)}
-                fill="none"
-                stroke="var(--color-accent)"
-                strokeWidth={2}
-                strokeDasharray="5 4"
-              />
-            )}
-          </svg>
-
-          <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-8 items-start">
-            <ul className="space-y-6">
-              {roots.map((task) => (
-                <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
-              ))}
-            </ul>
-            <ul className="space-y-5">
-              {col1.map((task) => (
-                <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
-              ))}
-            </ul>
-            <ul className="space-y-5">
-              {col2.map((task) => (
-                <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
-              ))}
-            </ul>
-          </div>
+        // Each root gets its own 3-column group, stacked vertically — this is
+        // what guarantees the next root always starts below the previous
+        // root's *entire* expanded subtree (its tallest column), rather than
+        // three tree-wide columns racing independently at different speeds.
+        <div className="space-y-8">
+          {roots.map((root) => {
+            const children = expandedIds.has(root.id) ? (byParent.get(root.id) ?? []) : [];
+            const grandchildren = children
+              .filter((c) => expandedIds.has(c.id))
+              .flatMap((c) => byParent.get(c.id) ?? []);
+            return (
+              <div key={root.id} className="grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-5 items-start">
+                <ul>
+                  <TaskNode task={root} tags={tags} byParent={byParent} byId={byId} />
+                </ul>
+                {children.length > 0 && (
+                  <ul className="space-y-5">
+                    {children.map((task) => (
+                      <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
+                    ))}
+                  </ul>
+                )}
+                {grandchildren.length > 0 && (
+                  <ul className="space-y-5">
+                    {grandchildren.map((task) => (
+                      <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -465,7 +382,6 @@ function TaskNode({
 
   return (
     <li
-      ref={(el) => ctx?.registerRef(task.id, el)}
       data-task-id={task.id}
       className={clsx(
         "hover:border-accent/40 transition-colors duration-500",
@@ -551,7 +467,7 @@ function TaskNode({
               renderTrigger={({ open }) =>
                 task.due_date ? (
                   <button type="button" onClick={open} className="text-xs text-text-muted hover:text-text">
-                    due {task.due_date}
+                    due {formatDateDMY(task.due_date)}
                   </button>
                 ) : (
                   <button

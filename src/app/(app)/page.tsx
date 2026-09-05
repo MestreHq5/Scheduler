@@ -70,7 +70,7 @@ export default async function HubPage() {
             className="text-xs text-accent mt-2"
             title={`Changed from ${profile?.previous_timezone} on ${new Date(
               profile!.timezone_changed_at!,
-            ).toLocaleDateString()}. Past events keep their original local time; upcoming imported events use the new timezone.`}
+            ).toLocaleDateString("en-GB")}. Past events keep their original local time; upcoming imported events use the new timezone.`}
           >
             Timezone changed recently — hover for details
           </p>
@@ -88,7 +88,7 @@ export default async function HubPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-14">
         <div>
           <Section title="Deadlines" href="/tasks">
             <DeadlinesPanel tasks={(deadlineTasks as unknown as DeadlineTask[]) ?? []} today={today} />

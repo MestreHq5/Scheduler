@@ -80,13 +80,13 @@ export function BlockEditModal({
               onChange={(next) => next && setDate(next)}
               title="Block date"
               allowClear={false}
-              renderTrigger={({ value, open }) => (
+              renderTrigger={({ label, open }) => (
                 <button
                   type="button"
                   onClick={open}
                   className="rounded-lg bg-surface-2 border border-border px-2 py-2 text-sm outline-none focus:border-accent"
                 >
-                  {value}
+                  {label}
                 </button>
               )}
             />
@@ -126,7 +126,7 @@ export function BlockEditModal({
               value={details}
               onChange={(e) => setDetails(e.target.value)}
               maxLength={30}
-              placeholder="Details (e.g. room number)"
+              placeholder="Details (optional)"
               className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2 text-sm outline-none focus:border-accent"
             />
             <p className="text-[11px] text-text-muted mt-1 text-right">{details.length}/30</p>

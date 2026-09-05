@@ -46,12 +46,12 @@
 /* Light theme — same navy/amber identity, lifted onto a neutral paper ground. */
 :root[data-theme="light"] {
   color-scheme: light;
-  --scheduler-bg: #f3f4f4;
-  --scheduler-surface: #ffffff;
-  --scheduler-surface-2: #eef0f6;
-  --scheduler-border: #d9dade;
+  --scheduler-bg: #e8e9ec;
+  --scheduler-surface: #f6f6f8;
+  --scheduler-surface-2: #e5e7ef;
+  --scheduler-border: #c7c9d1;
   --scheduler-text: #171d30;
-  --scheduler-text-muted: #5b6478;
+  --scheduler-text-muted: #4d5568;
   --scheduler-accent: #e2662a;
   --scheduler-accent-soft: #fbdfc7;
   --scheduler-accent-2: #0f9488;
@@ -63,11 +63,23 @@
   --scheduler-level-2: #f7f7f8;
 }
 
+html {
+  /* Reserves the scrollbar's width whether or not a page needs one, so the
+     sidebar (sticky, fixed width) doesn't visibly shift a few pixels when
+     navigating between a tall page (scrollbar present) and a short one
+     (scrollbar absent). */
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-theme="light"] body {
+  font-weight: 500;
 }
 
 ::selection {

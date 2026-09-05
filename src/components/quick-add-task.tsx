@@ -59,13 +59,13 @@ export function QuickAddTask({
               value={dueDate}
               onChange={setDueDate}
               title="Due date"
-              renderTrigger={({ value, open }) => (
+              renderTrigger={({ label, open }) => (
                 <button
                   type="button"
                   onClick={open}
                   className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent w-[9.5rem] text-left"
                 >
-                  {value ?? <span className="text-text-muted">Due date</span>}
+                  {label ?? <span className="text-text-muted">Due date</span>}
                 </button>
               )}
             />
