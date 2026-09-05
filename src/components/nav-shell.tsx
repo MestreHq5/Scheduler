@@ -3,45 +3,72 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { clsx } from "clsx";
+import { useTransition } from "react";
+import { signOut } from "@/lib/actions/auth";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 const NAV = [
   { href: "/", label: "Hub", icon: HomeIcon },
   { href: "/tasks", label: "Tasks", icon: CheckIcon },
-  { href: "/scheduler", label: "Scheduler", icon: CalendarIcon },
+  { href: "/calendar", label: "Calendar", icon: CalendarIcon },
   { href: "/stats", label: "Stats", icon: ChartIcon },
   { href: "/settings", label: "Settings", icon: GearIcon },
 ] as const;
 
 export function NavShell({ email, children }: { email: string; children: React.ReactNode }) {
   const pathname = usePathname();
+  const [pending, startTransition] = useTransition();
 
   return (
-    <div className="min-h-dvh md:flex">
-      <aside className="hidden md:flex md:flex-col md:w-56 border-r border-border p-6 shrink-0">
-        <p className="font-display text-xl mb-8">Aero Hub</p>
-        <nav className="flex flex-col gap-1">
-          {NAV.map(({ href, label, icon: Icon }) => {
-            const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={clsx(
-                  "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                  active ? "bg-surface-2 text-text" : "text-text-muted hover:text-text",
-                )}
-              >
-                <Icon />
-                {label}
-              </Link>
-            );
-          })}
-        </nav>
-        <p className="mt-auto text-xs text-text-muted truncate">{email}</p>
+    <div className="min-h-dvh md:flex md:mx-auto md:max-w-[1440px]">
+      <aside className="hidden md:flex md:flex-col md:w-56 md:sticky md:top-0 md:h-dvh border-r border-border p-6 shrink-0">
+        <div className="flex-1 flex flex-col justify-center">
+          <p className="font-display text-xl mb-8">Scheduler</p>
+          <nav className="flex flex-col gap-1">
+            {NAV.map(({ href, label, icon: Icon }) => {
+              const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  className={clsx(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                    active ? "bg-surface-2 text-text" : "text-text-muted hover:text-text",
+                  )}
+                >
+                  <Icon />
+                  {label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+        <div className="mt-auto">
+          <p className="text-xs text-text-muted truncate mb-3">{email}</p>
+          <ThemeToggle />
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => startTransition(() => signOut())}
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm w-full text-text-muted hover:text-danger hover:bg-danger/10 transition-colors disabled:opacity-50"
+          >
+            <LogoutIcon />
+            {pending ? "Logging out…" : "Log out"}
+          </button>
+        </div>
       </aside>
 
       <div className="flex-1 min-w-0">
-        <main className="max-w-3xl mx-auto px-4 pt-6 pb-24 md:pb-10 md:px-8">{children}</main>
+        <main
+          className={clsx(
+            "mx-auto pt-10 pb-24 md:pb-10 md:pt-14",
+            pathname.startsWith("/calendar")
+              ? "max-w-full px-2 md:px-4"
+              : "max-w-3xl px-4 md:px-8",
+          )}
+        >
+          {children}
+        </main>
       </div>
 
       <nav className="md:hidden fixed bottom-0 inset-x-0 border-t border-border bg-bg/95 backdrop-blur px-2 pb-[env(safe-area-inset-bottom)]">
@@ -65,6 +92,15 @@ export function NavShell({ email, children }: { email: string; children: React.R
         </div>
       </nav>
     </div>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <path d="M9 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M16 16l4-4-4-4M20 12H9" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
 

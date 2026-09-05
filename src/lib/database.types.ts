@@ -18,6 +18,7 @@ export interface Database {
           previous_timezone: string | null;
           timezone_changed_at: string | null;
           onboarded: boolean;
+          task_drag_hold_ms: number;
           created_at: string;
         };
         Insert: Partial<Database["public"]["Tables"]["profiles"]["Row"]> & { id: string; email: string };
@@ -56,6 +57,7 @@ export interface Database {
           depth: number;
           sort_order: number;
           archived: boolean;
+          completed_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -101,6 +103,7 @@ export interface Database {
           id: string;
           user_id: string;
           source: IcsSource;
+          label: string | null;
           kind: IcsFeedKind;
           url: string | null;
           storage_path: string | null;

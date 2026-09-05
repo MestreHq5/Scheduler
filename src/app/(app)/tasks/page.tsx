@@ -3,6 +3,8 @@ import { clsx } from "clsx";
 import { createClient } from "@/lib/supabase/server";
 import { QuickAddTask } from "@/components/quick-add-task";
 import { TaskTree } from "@/components/task-tree";
+import { TagQuickAddModal } from "@/components/tag-quick-add-modal";
+import { keepRecentCompletedRoots } from "@/lib/tasks";
 
 export default async function TasksPage({
   searchParams,
@@ -11,27 +13,47 @@ export default async function TasksPage({
 }) {
   const { tag: tagFilter } = await searchParams;
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  const [{ data: tags }, { data: tasks }] = await Promise.all([
+  const [{ data: tags }, { data: tasks }, { data: profile }] = await Promise.all([
     supabase.from("tags").select("*").eq("archived", false).order("sort_order"),
     supabase
       .from("tasks")
       .select("*")
       .eq("archived", false)
       .order("created_at", { ascending: true }),
+    supabase.from("profiles").select("task_drag_hold_ms").eq("id", user!.id).single(),
   ]);
 
   const allTags = tags ?? [];
   const allTasks = tasks ?? [];
 
+  // Only the 3 most recently completed main tasks (and their subtree) stay
+  // loaded here — older completed branches still live in the DB and reappear
+  // the moment their main task is un-done. See /tasks/archive for the rest.
+  const recent = keepRecentCompletedRoots(allTasks, 3);
+
   // Tag filter keeps a task's whole ancestor chain so the tree stays intact.
   const visible = tagFilter
-    ? filterByTagKeepingAncestors(allTasks, tagFilter)
-    : allTasks;
+    ? filterByTagKeepingAncestors(recent, tagFilter)
+    : recent;
 
   return (
     <div>
-      <h1 className="font-display text-3xl mb-6">Tasks</h1>
+      <div className="flex items-center justify-between mb-6 gap-3">
+        <h1 className="font-display text-3xl">Tasks</h1>
+        <div className="flex items-center gap-2">
+          <TagQuickAddModal />
+          <Link
+            href="/tasks/archive"
+            className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text transition-colors"
+          >
+            See all
+          </Link>
+        </div>
+      </div>
 
       <div className="mb-6">
         <QuickAddTask tags={allTags} />
@@ -61,7 +83,7 @@ export default async function TasksPage({
         ))}
       </div>
 
-      <TaskTree tasks={visible} tags={allTags} />
+      <TaskTree tasks={visible} tags={allTags} dragHoldMs={profile?.task_drag_hold_ms ?? 450} />
     </div>
   );
 }

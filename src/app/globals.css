@@ -4,21 +4,49 @@
   --font-display: "Fraunces", ui-serif, Georgia, serif;
   --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
 
-  --color-bg: #0b0f1a;
-  --color-surface: #121a2b;
-  --color-surface-2: #1a2440;
-  --color-border: #283253;
-  --color-text: #eef1f8;
-  --color-text-muted: #94a0c2;
-  --color-accent: #ff8a4c;
-  --color-accent-soft: #4a2f22;
-  --color-accent-2: #5eead4;
-  --color-success: #34d399;
-  --color-danger: #f87171;
+  --color-bg: var(--scheduler-bg);
+  --color-surface: var(--scheduler-surface);
+  --color-surface-2: var(--scheduler-surface-2);
+  --color-border: var(--scheduler-border);
+  --color-text: var(--scheduler-text);
+  --color-text-muted: var(--scheduler-text-muted);
+  --color-accent: var(--scheduler-accent);
+  --color-accent-soft: var(--scheduler-accent-soft);
+  --color-accent-2: var(--scheduler-accent-2);
+  --color-success: var(--scheduler-success);
+  --color-danger: var(--scheduler-danger);
 }
 
-html {
+/* Dark "dusk cockpit" theme — the default look. */
+:root {
   color-scheme: dark;
+  --scheduler-bg: #0b0f1a;
+  --scheduler-surface: #121a2b;
+  --scheduler-surface-2: #1a2440;
+  --scheduler-border: #283253;
+  --scheduler-text: #eef1f8;
+  --scheduler-text-muted: #94a0c2;
+  --scheduler-accent: #ff8a4c;
+  --scheduler-accent-soft: #4a2f22;
+  --scheduler-accent-2: #5eead4;
+  --scheduler-success: #34d399;
+  --scheduler-danger: #f87171;
+}
+
+/* Light theme — same navy/amber identity, lifted onto a warm paper ground. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --scheduler-bg: #f6f4ef;
+  --scheduler-surface: #ffffff;
+  --scheduler-surface-2: #eef0f6;
+  --scheduler-border: #dbdfe9;
+  --scheduler-text: #171d30;
+  --scheduler-text-muted: #5b6478;
+  --scheduler-accent: #e2662a;
+  --scheduler-accent-soft: #fbdfc7;
+  --scheduler-accent-2: #0f9488;
+  --scheduler-success: #15803d;
+  --scheduler-danger: #dc2626;
 }
 
 body {

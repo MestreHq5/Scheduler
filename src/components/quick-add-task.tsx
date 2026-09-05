@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import type { Tag } from "@/lib/database.types";
 import { createTask } from "@/lib/actions/tasks";
 import { TagSelect } from "@/components/tag-select";
+import { WheelDatePicker } from "@/components/wheel-date-picker";
 
 export function QuickAddTask({
   tags,
@@ -18,7 +19,7 @@ export function QuickAddTask({
 }) {
   const [title, setTitle] = useState("");
   const [tagId, setTagId] = useState<string | null>(null);
-  const [dueDate, setDueDate] = useState("");
+  const [dueDate, setDueDate] = useState<string | null>(null);
   const [showTags, setShowTags] = useState(!compact);
   const [pending, startTransition] = useTransition();
 
@@ -29,11 +30,11 @@ export function QuickAddTask({
       await createTask({
         title: title.trim(),
         tag_id: tagId,
-        due_date: dueDate || null,
+        due_date: dueDate,
         parent_id: parentId,
       });
       setTitle("");
-      setDueDate("");
+      setDueDate(null);
       setTagId(null);
       onDone?.();
     });
@@ -41,7 +42,7 @@ export function QuickAddTask({
 
   return (
     <form onSubmit={submit} className="space-y-2">
-      <div className="flex gap-2">
+      <div className="flex gap-2 items-end">
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -50,12 +51,23 @@ export function QuickAddTask({
           className="flex-1 rounded-lg bg-surface border border-border px-3 py-2 text-sm outline-none focus:border-accent"
         />
         {!parentId && (
-          <input
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent w-[9.5rem]"
-          />
+          <div className="flex flex-col items-start">
+            <span className="text-[10px] italic text-text-muted mb-0.5 pl-0.5">optional</span>
+            <WheelDatePicker
+              value={dueDate}
+              onChange={setDueDate}
+              title="Due date"
+              renderTrigger={({ value, open }) => (
+                <button
+                  type="button"
+                  onClick={open}
+                  className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent w-[9.5rem] text-left"
+                >
+                  {value ?? <span className="text-text-muted">Due date</span>}
+                </button>
+              )}
+            />
+          </div>
         )}
         <button
           type="submit"

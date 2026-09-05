@@ -49,6 +49,31 @@ export async function updateTask(
   revalidatePath("/");
 }
 
+/**
+ * Reparents a task by drag-and-drop. Its direct children are detached first
+ * and promoted into independent root tasks, each starting its own branch —
+ * grandchildren stay put since they're still attached to their own
+ * (now-promoted) parent. The moved task itself then takes on the new parent
+ * (or becomes a root when newParentId is null). This two-step order means
+ * the moved task always has zero children by the time its own parent_id is
+ * written, so a reparent can never create a cycle.
+ */
+export async function moveTask(id: string, newParentId: string | null) {
+  const { supabase } = await currentUserId();
+
+  const { error: detachError } = await supabase
+    .from("tasks")
+    .update({ parent_id: null })
+    .eq("parent_id", id);
+  if (detachError) throw detachError;
+
+  const { error } = await supabase.from("tasks").update({ parent_id: newParentId }).eq("id", id);
+  if (error) throw error;
+
+  revalidatePath("/tasks");
+  revalidatePath("/");
+}
+
 export async function deleteTask(id: string) {
   const { supabase } = await currentUserId();
   const { error } = await supabase.from("tasks").delete().eq("id", id);

@@ -1,7 +1,7 @@
-# Aero Hub
+# Scheduler
 
-Single-user study planning + scheduling app. See `spec.md` for the product
-spec and `CLAUDE.md` for build notes/architecture.
+Single-user study planning + scheduling app. See `CLAUDE.md` for the
+product spec and build notes/architecture.
 
 Stack: Next.js 15 (App Router, TypeScript) + Supabase (Postgres, Auth,
 Storage) + Tailwind v4. Deploy target: Vercel.

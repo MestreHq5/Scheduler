@@ -33,10 +33,13 @@ export default function OnboardingPage() {
   return (
     <main className="min-h-dvh flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
-        <h1 className="font-display text-3xl mb-2">Welcome.</h1>
+        <div className="text-center mb-10">
+          <p className="font-display italic text-xl text-accent mb-2 tracking-wide">One thing first,</p>
+          <h1 className="font-display text-5xl">Welcome.</h1>
+        </div>
         <p className="text-text-muted mb-8">
-          One thing first: confirm your timezone. Everything — blocks, deadlines,
-          imported events — is scheduled against it. Summer/winter time shifts
+          Confirm your timezone. Everything — blocks, deadlines, imported
+          events — is scheduled against it. Summer/winter time shifts
           automatically after this.
         </p>
 

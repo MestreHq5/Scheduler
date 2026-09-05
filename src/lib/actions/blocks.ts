@@ -35,7 +35,16 @@ export async function createBlock(input: {
     user_id: userId,
   });
   if (error) throw error;
-  revalidatePath("/scheduler");
+  revalidatePath("/calendar");
+  revalidatePath("/");
+}
+
+/** Reschedules a block after a drag — keeps the same duration, moves date/start/end. */
+export async function moveBlock(id: string, input: { date: string; start_time: string; end_time: string }) {
+  const { supabase } = await currentUserId();
+  const { error } = await supabase.from("blocks").update(input).eq("id", id);
+  if (error) throw error;
+  revalidatePath("/calendar");
   revalidatePath("/");
 }
 
@@ -43,7 +52,7 @@ export async function deleteBlock(id: string) {
   const { supabase } = await currentUserId();
   const { error } = await supabase.from("blocks").delete().eq("id", id);
   if (error) throw error;
-  revalidatePath("/scheduler");
+  revalidatePath("/calendar");
   revalidatePath("/");
 }
 
@@ -88,5 +97,5 @@ export async function duplicateWeek(sourceMonday: string, targetMonday: string) 
 
   const { error: insertError } = await supabase.from("blocks").insert(copies);
   if (insertError) throw insertError;
-  revalidatePath("/scheduler");
+  revalidatePath("/calendar");
 }

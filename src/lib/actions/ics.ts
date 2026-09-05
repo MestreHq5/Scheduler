@@ -14,6 +14,26 @@ async function currentUserId() {
   return { supabase, userId: user.id };
 }
 
+export async function saveIcsFeedLabel(source: IcsSource, label: string) {
+  const { supabase, userId } = await currentUserId();
+  const trimmed = label.trim() || null;
+
+  const { data: existing, error: fetchError } = await supabase
+    .from("ics_feeds")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("source", source)
+    .maybeSingle();
+  if (fetchError) throw fetchError;
+
+  const { error } = existing
+    ? await supabase.from("ics_feeds").update({ label: trimmed }).eq("id", existing.id)
+    : await supabase.from("ics_feeds").insert({ user_id: userId, source, label: trimmed, kind: "url" });
+  if (error) throw error;
+
+  revalidatePath("/settings");
+}
+
 export async function saveIcsFeedUrl(source: IcsSource, url: string) {
   const { supabase, userId } = await currentUserId();
   const { error } = await supabase
@@ -106,5 +126,5 @@ export async function syncIcsFeed(source: IcsSource) {
   }
 
   revalidatePath("/settings");
-  revalidatePath("/scheduler");
+  revalidatePath("/calendar");
 }

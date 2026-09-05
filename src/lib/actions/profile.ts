@@ -64,3 +64,20 @@ export async function changeTimezone(newTimezone: string) {
 
   revalidatePath("/", "layout");
 }
+
+/** How long a touch-and-hold on a task's grip handle takes before drag starts. */
+export async function changeDragHoldDuration(ms: number) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("Not authenticated");
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({ task_drag_hold_ms: ms })
+    .eq("id", user.id);
+  if (error) throw error;
+
+  revalidatePath("/tasks");
+}

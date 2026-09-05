@@ -16,7 +16,7 @@ const spaceGrotesk = Space_Grotesk({
 });
 
 export const metadata: Metadata = {
-  title: "Aero Hub",
+  title: "Scheduler",
   description: "Study planning and scheduling.",
 };
 
@@ -26,9 +26,19 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+const THEME_BOOTSTRAP = `
+try {
+  var t = localStorage.getItem("scheduler-theme");
+  if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+} catch (e) {}
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${fraunces.variable} ${spaceGrotesk.variable}`}>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOTSTRAP }} />
+      </head>
       <body>{children}</body>
     </html>
   );

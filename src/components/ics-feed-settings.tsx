@@ -2,24 +2,46 @@
 
 import { useRef, useState, useTransition } from "react";
 import type { IcsFeed, IcsSource } from "@/lib/database.types";
-import { saveIcsFeedUrl, syncIcsFeed, uploadIcsFile } from "@/lib/actions/ics";
+import { saveIcsFeedLabel, saveIcsFeedUrl, syncIcsFeed, uploadIcsFile } from "@/lib/actions/ics";
 
-export function IcsFeedSettings({ source, feed }: { source: IcsSource; feed: IcsFeed | null }) {
+export function IcsFeedSettings({
+  source,
+  feed,
+  defaultLabel,
+}: {
+  source: IcsSource;
+  feed: IcsFeed | null;
+  defaultLabel: string;
+}) {
   const [mode, setMode] = useState<"url" | "file">(feed?.kind ?? "url");
   const [url, setUrl] = useState(feed?.url ?? "");
+  const [label, setLabel] = useState(feed?.label ?? "");
   const fileRef = useRef<HTMLInputElement>(null);
   const [pending, startTransition] = useTransition();
 
   return (
     <div className="rounded-xl border border-border p-4">
-      <div className="flex items-center justify-between mb-3">
-        <p className="font-medium text-sm capitalize">{source}</p>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <input
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onBlur={() => {
+            if (label !== (feed?.label ?? "")) startTransition(() => saveIcsFeedLabel(source, label));
+          }}
+          placeholder={defaultLabel}
+          aria-label="Import name"
+          className="font-medium text-sm bg-transparent border-b border-transparent hover:border-border focus:border-accent outline-none min-w-0 flex-1"
+        />
         {feed?.last_synced_at && (
-          <p className="text-xs text-text-muted">
+          <p className="text-xs text-text-muted shrink-0">
             last synced {new Date(feed.last_synced_at).toLocaleString()}
           </p>
         )}
       </div>
+      <p className="text-xs text-text-muted mb-3 -mt-1">
+        Name this import however you like — it&apos;s just a label, any kind of
+        recurring event feed works here.
+      </p>
 
       <div className="flex gap-4 text-xs mb-3">
         <label className="flex items-center gap-1.5">

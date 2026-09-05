@@ -5,6 +5,8 @@ import type { Tag } from "@/lib/database.types";
 import { createBlock } from "@/lib/actions/blocks";
 import { TagSelect } from "@/components/tag-select";
 import { deriveBlockTitle } from "@/lib/tags";
+import { WheelDatePicker } from "@/components/wheel-date-picker";
+import { CircularTimePicker } from "@/components/circular-time-picker";
 
 export function QuickAddBlock({ tags, defaultDate }: { tags: Tag[]; defaultDate: string }) {
   const [tagId, setTagId] = useState<string | null>(null);
@@ -28,24 +30,49 @@ export function QuickAddBlock({ tags, defaultDate }: { tags: Tag[]; defaultDate:
       <TagSelect tags={tags} value={tagId} onChange={setTagId} />
 
       <div className="flex gap-2 items-center flex-wrap">
-        <input
-          type="date"
+        <WheelDatePicker
           value={date}
-          onChange={(e) => setDate(e.target.value)}
-          className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent"
+          onChange={(next) => next && setDate(next)}
+          title="Block date"
+          allowClear={false}
+          renderTrigger={({ value, open }) => (
+            <button
+              type="button"
+              onClick={open}
+              className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent"
+            >
+              {value}
+            </button>
+          )}
         />
-        <input
-          type="time"
+        <CircularTimePicker
           value={start}
-          onChange={(e) => setStart(e.target.value)}
-          className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent"
+          onChange={setStart}
+          title="Start time"
+          renderTrigger={({ value, open }) => (
+            <button
+              type="button"
+              onClick={open}
+              className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent"
+            >
+              {value}
+            </button>
+          )}
         />
         <span className="text-text-muted text-sm">–</span>
-        <input
-          type="time"
+        <CircularTimePicker
           value={end}
-          onChange={(e) => setEnd(e.target.value)}
-          className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent"
+          onChange={setEnd}
+          title="End time"
+          renderTrigger={({ value, open }) => (
+            <button
+              type="button"
+              onClick={open}
+              className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent"
+            >
+              {value}
+            </button>
+          )}
         />
         <button
           type="submit"

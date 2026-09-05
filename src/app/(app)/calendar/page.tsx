@@ -8,7 +8,7 @@ import type { Block } from "@/lib/database.types";
 
 type BlockWithTag = Block & { tag: { label: string; color: string } | null };
 
-export default async function SchedulerPage({
+export default async function CalendarPage({
   searchParams,
 }: {
   searchParams: Promise<{ week?: string }>;
@@ -47,7 +47,7 @@ export default async function SchedulerPage({
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="font-display text-3xl">Scheduler</h1>
+        <h1 className="font-display text-3xl">Calendar</h1>
         <DuplicateWeekButton sourceMonday={monday} targetMonday={nextWeek} />
       </div>
 
@@ -56,13 +56,13 @@ export default async function SchedulerPage({
       </div>
 
       <div className="flex items-center justify-between mb-4">
-        <Link href={`/scheduler?week=${prevWeek}`} className="text-sm text-text-muted hover:text-text">
+        <Link href={`/calendar?week=${prevWeek}`} className="text-sm text-text-muted hover:text-text">
           ← prev
         </Link>
         <p className="text-sm font-medium">
           {monday} – {weekEnd}
         </p>
-        <Link href={`/scheduler?week=${nextWeek}`} className="text-sm text-text-muted hover:text-text">
+        <Link href={`/calendar?week=${nextWeek}`} className="text-sm text-text-muted hover:text-text">
           next →
         </Link>
       </div>

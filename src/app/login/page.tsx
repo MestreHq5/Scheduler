@@ -36,8 +36,10 @@ export default function LoginPage() {
   return (
     <main className="min-h-dvh flex items-center justify-center px-6">
       <div className="w-full max-w-sm">
-        <p className="font-display italic text-2xl text-text-muted mb-1">Ad astra,</p>
-        <h1 className="font-display text-4xl mb-8">Aero Hub</h1>
+        <div className="text-center mb-10">
+          <p className="font-display italic text-xl text-accent mb-2 tracking-wide">Ad astra,</p>
+          <h1 className="font-display text-5xl">Scheduler</h1>
+        </div>
 
         <button
           onClick={signInWithGoogle}

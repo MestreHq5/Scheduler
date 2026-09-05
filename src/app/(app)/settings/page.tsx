@@ -3,6 +3,7 @@ import { Section } from "@/components/section";
 import { TagManager } from "@/components/tag-manager";
 import { TimezoneSettings } from "@/components/timezone-settings";
 import { IcsFeedSettings } from "@/components/ics-feed-settings";
+import { DragHoldSettings } from "@/components/drag-hold-settings";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -36,10 +37,18 @@ export default async function SettingsPage() {
         <TagManager tags={tags ?? []} />
       </Section>
 
+      <Section title="Interaction">
+        <DragHoldSettings ms={profile?.task_drag_hold_ms ?? 450} />
+        <p className="text-xs text-text-muted mt-2">
+          How long to press and hold a task&apos;s grip handle on touch before
+          dragging starts, to move it in the tree.
+        </p>
+      </Section>
+
       <Section title="Calendar sync">
         <div className="space-y-3">
-          <IcsFeedSettings source="classes" feed={classesFeed} />
-          <IcsFeedSettings source="tests" feed={testsFeed} />
+          <IcsFeedSettings source="classes" feed={classesFeed} defaultLabel="Import 1" />
+          <IcsFeedSettings source="tests" feed={testsFeed} defaultLabel="Import 2" />
         </div>
 
         <div className="rounded-xl border border-dashed border-border p-4 mt-3">

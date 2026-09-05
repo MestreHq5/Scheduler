@@ -91,7 +91,7 @@ export default async function HubPage() {
     <div>
       <header className="mb-8 pt-2">
         <p className="font-display italic text-lg text-text-muted">{QUOTE}</p>
-        <h1 className="font-display text-4xl mt-1">Aero Hub</h1>
+        <h1 className="font-display text-4xl mt-1">Scheduler</h1>
         {tzChanged && (
           <p
             className="text-xs text-accent mt-2"
@@ -104,7 +104,7 @@ export default async function HubPage() {
         )}
       </header>
 
-      <Section title="Today's blocks" href="/scheduler">
+      <Section title="Today's blocks" href="/calendar">
         {!todayBlocks?.length && <p className="text-sm text-text-muted">Nothing scheduled today.</p>}
         <ul className="space-y-2">
           {(todayBlocks as unknown as { id: string; title: string; start_time: string; end_time: string; tag: { label: string; color: string } | null }[] | null)?.map(
