@@ -1,25 +1,47 @@
 "use client";
 
-import { createContext, useContext, useMemo, useRef, useState, useTransition } from "react";
+import { createContext, useContext, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { clsx } from "clsx";
 import type { Tag, Task } from "@/lib/database.types";
 import { TaskCheckbox } from "@/components/task-checkbox";
 import { TagPill } from "@/components/tag-pill";
+import { TagSelect } from "@/components/tag-select";
 import { QuickAddTask } from "@/components/quick-add-task";
 import { WheelDatePicker } from "@/components/wheel-date-picker";
 import { updateTask, moveTask } from "@/lib/actions/tasks";
 
 const ROOT_DROP = "ROOT";
 
+// Depth-based shading (v1 of the columned tree redesign) — pure gray scale
+// tokens (--color-level-0/1/2 in globals.css), deliberately distinct from
+// the navy-tinted surface/surface-2 tokens used everywhere else, so nesting
+// reads at a glance without relying on indentation.
+const LEVEL_BG: string[] = ["bg-level-0", "bg-level-1", "bg-level-2"];
+const LEVEL_CARD: string[] = [
+  "rounded-2xl border border-border/60 px-4 py-3",
+  "rounded-xl border border-border/50 px-3.5 py-2.5",
+  "rounded-lg border border-border/40 px-3 py-2",
+];
+
 type DragVisual = { id: string; x: number; y: number; overId: string | null };
 
-interface DragCtxValue {
+interface TreeCtxValue {
   drag: DragVisual | null;
   invalidIdsRef: React.RefObject<Set<string>>;
   onGripPointerDown: (task: Task, e: React.PointerEvent<HTMLButtonElement>) => void;
+  expandedIds: Set<string>;
+  toggleExpand: (id: string) => void;
+  registerRef: (id: string, el: HTMLElement | null) => void;
 }
 
-const DragCtx = createContext<DragCtxValue | null>(null);
+const TreeCtx = createContext<TreeCtxValue | null>(null);
+
+type Connector = { id: string; x1: number; y1: number; x2: number; y2: number };
+
+function bezierPath(x1: number, y1: number, x2: number, y2: number) {
+  const midX = (x1 + x2) / 2;
+  return `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+}
 
 export function TaskTree({
   tasks,
@@ -43,10 +65,29 @@ export function TaskTree({
   const byId = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks]);
 
   const [drag, setDrag] = useState<DragVisual | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
   const [, startTransition] = useTransition();
   const dragRef = useRef<{ id: string; pointerId: number } | null>(null);
   const invalidIdsRef = useRef<Set<string>>(new Set());
   const pendingHoldTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nodeRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [resizeTick, setResizeTick] = useState(0);
+
+  function toggleExpand(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function registerRef(id: string, el: HTMLElement | null) {
+    if (el) nodeRefs.current.set(id, el);
+    else nodeRefs.current.delete(id);
+  }
 
   function collectInvalidIds(taskId: string) {
     const s = new Set<string>([taskId]);
@@ -160,10 +201,87 @@ export function TaskTree({
   }
 
   const roots = byParent.get(null) ?? [];
+  const col1: Task[] = [];
+  for (const r of roots) {
+    if (expandedIds.has(r.id)) col1.push(...(byParent.get(r.id) ?? []));
+  }
+  const col2: Task[] = [];
+  for (const s of col1) {
+    if (expandedIds.has(s.id)) col2.push(...(byParent.get(s.id) ?? []));
+  }
+
   const draggedTask = drag ? byId.get(drag.id) : null;
 
+  // Recompute connector geometry whenever the layout could have shifted:
+  // task list changes, expand/collapse, or a resize of the tree container
+  // (the ResizeObserver below also catches inline form/editing height
+  // changes, so this doesn't need to track every possible cause by hand).
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const next: Connector[] = [];
+
+    function link(parentId: string, childId: string) {
+      const p = nodeRefs.current.get(parentId);
+      const c = nodeRefs.current.get(childId);
+      if (!p || !c) return;
+      const pr = p.getBoundingClientRect();
+      const cr = c.getBoundingClientRect();
+      next.push({
+        id: `${parentId}:${childId}`,
+        x1: pr.right - containerRect.left,
+        y1: pr.top + pr.height / 2 - containerRect.top,
+        x2: cr.left - containerRect.left,
+        y2: cr.top + cr.height / 2 - containerRect.top,
+      });
+    }
+
+    for (const r of roots) {
+      if (!expandedIds.has(r.id)) continue;
+      for (const s of byParent.get(r.id) ?? []) link(r.id, s.id);
+    }
+    for (const s of col1) {
+      if (!expandedIds.has(s.id)) continue;
+      for (const g of byParent.get(s.id) ?? []) link(s.id, g.id);
+    }
+
+    setConnectors(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, expandedIds, resizeTick]);
+
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setResizeTick((t) => t + 1));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // Live "ghost" connector while dragging, from the dragged card to whatever
+  // valid drop target is currently under the pointer, so the pending
+  // connection is visible before drop. Read straight from the DOM at render
+  // time since it only feeds this frame's SVG output, not persisted state.
+  let ghost: { x1: number; y1: number; x2: number; y2: number } | null = null;
+  if (drag?.overId && drag.overId !== ROOT_DROP && !invalidIdsRef.current.has(drag.overId) && containerRef.current) {
+    const target = byId.get(drag.overId);
+    const from = nodeRefs.current.get(drag.id);
+    const to = nodeRefs.current.get(drag.overId);
+    if (target && target.depth < 2 && from && to) {
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const fr = from.getBoundingClientRect();
+      const tr = to.getBoundingClientRect();
+      ghost = {
+        x1: fr.right - containerRect.left,
+        y1: fr.top + fr.height / 2 - containerRect.top,
+        x2: tr.left - containerRect.left,
+        y2: tr.top + tr.height / 2 - containerRect.top,
+      };
+    }
+  }
+
   return (
-    <DragCtx.Provider value={{ drag, invalidIdsRef, onGripPointerDown }}>
+    <TreeCtx.Provider value={{ drag, invalidIdsRef, onGripPointerDown, expandedIds, toggleExpand, registerRef }}>
       {drag && (
         <div
           data-task-drop-root
@@ -181,11 +299,49 @@ export function TaskTree({
       {roots.length === 0 ? (
         <p className="text-sm text-text-muted">Nothing here yet.</p>
       ) : (
-        <ul className="space-y-4">
-          {roots.map((task) => (
-            <TaskNode key={task.id} task={task} byParent={byParent} tags={tags} />
-          ))}
-        </ul>
+        <div ref={containerRef} className="relative">
+          <svg className="absolute inset-0 hidden md:block" style={{ width: "100%", height: "100%" }}>
+            {connectors.map((c) => (
+              <g key={c.id}>
+                <path
+                  d={bezierPath(c.x1, c.y1, c.x2, c.y2)}
+                  fill="none"
+                  stroke="var(--color-border)"
+                  strokeWidth={1.5}
+                />
+                <circle cx={c.x1} cy={c.y1} r={2.5} fill="var(--color-border)" />
+                <circle cx={c.x2} cy={c.y2} r={2.5} fill="var(--color-border)" />
+              </g>
+            ))}
+            {ghost && (
+              <path
+                d={bezierPath(ghost.x1, ghost.y1, ghost.x2, ghost.y2)}
+                fill="none"
+                stroke="var(--color-accent)"
+                strokeWidth={2}
+                strokeDasharray="5 4"
+              />
+            )}
+          </svg>
+
+          <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-x-10 gap-y-6 items-start">
+            <ul className="space-y-3">
+              {roots.map((task) => (
+                <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
+              ))}
+            </ul>
+            <ul className="space-y-3">
+              {col1.map((task) => (
+                <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
+              ))}
+            </ul>
+            <ul className="space-y-3">
+              {col2.map((task) => (
+                <TaskNode key={task.id} task={task} tags={tags} byParent={byParent} byId={byId} />
+              ))}
+            </ul>
+          </div>
+        </div>
       )}
 
       {drag && draggedTask && (
@@ -196,36 +352,42 @@ export function TaskTree({
           {draggedTask.title}
         </div>
       )}
-    </DragCtx.Provider>
+    </TreeCtx.Provider>
   );
 }
 
 function TaskNode({
   task,
-  byParent,
   tags,
+  byParent,
+  byId,
 }: {
   task: Task;
-  byParent: Map<string | null, Task[]>;
   tags: Tag[];
+  byParent: Map<string | null, Task[]>;
+  byId: Map<string, Task>;
 }) {
+  const ctx = useContext(TreeCtx);
   const children = byParent.get(task.id) ?? [];
-  const [expanded, setExpanded] = useState(false);
+  const hasChildren = children.length > 0;
+  const canNest = task.depth < 2;
+  const expanded = ctx?.expandedIds.has(task.id) ?? false;
+
   const [addingChild, setAddingChild] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleValue, setTitleValue] = useState(task.title);
+  const [editingTag, setEditingTag] = useState(false);
   const [, startTransition] = useTransition();
-  const tag = tags.find((t) => t.id === task.tag_id) ?? null;
-  const canNest = task.depth < 2;
-  const hasChildren = children.length > 0;
 
-  const dragCtx = useContext(DragCtx);
-  const dragging = dragCtx?.drag ?? null;
+  const tag = tags.find((t) => t.id === task.tag_id) ?? null;
+  const parentTask = task.parent_id ? (byId.get(task.parent_id) ?? null) : null;
+
+  const dragging = ctx?.drag ?? null;
   const isBeingDragged = dragging?.id === task.id;
   const isInvalidDropTarget =
     !!dragging &&
     !isBeingDragged &&
-    (task.depth === 2 || (dragCtx?.invalidIdsRef.current.has(task.id) ?? false));
+    (task.depth === 2 || (ctx?.invalidIdsRef.current.has(task.id) ?? false));
   const isHoveredValidTarget = !!dragging && dragging.overId === task.id && !isInvalidDropTarget && !isBeingDragged;
 
   function saveTitle() {
@@ -243,28 +405,30 @@ function TaskNode({
     startTransition(() => updateTask(task.id, { due_date: next }));
   }
 
-  const isRoot = task.depth === 0;
+  function saveTag(id: string) {
+    setEditingTag(false);
+    if (id === task.tag_id) return;
+    startTransition(() => updateTask(task.id, { tag_id: id }));
+  }
 
   return (
     <li
+      ref={(el) => ctx?.registerRef(task.id, el)}
+      data-task-id={task.id}
       className={clsx(
-        isRoot && "rounded-2xl border border-border bg-surface/40 overflow-hidden",
+        "hover:border-accent/40 transition-colors duration-500",
+        LEVEL_CARD[task.depth],
+        LEVEL_BG[task.depth],
+        task.done && "opacity-50",
+        isBeingDragged && "opacity-40",
+        isInvalidDropTarget && "opacity-30",
+        isHoveredValidTarget && "ring-2 ring-accent",
       )}
     >
-      <div
-        data-task-id={task.id}
-        className={clsx(
-          "flex items-start gap-2 hover:bg-surface transition-colors duration-500",
-          isRoot ? "px-4 py-3" : "rounded-xl px-3 py-2.5",
-          task.done && "opacity-50",
-          isBeingDragged && "opacity-40",
-          isInvalidDropTarget && "opacity-30",
-          isHoveredValidTarget && "ring-2 ring-accent bg-surface-2",
-        )}
-      >
+      <div className="flex items-start gap-2">
         <button
           type="button"
-          onPointerDown={(e) => dragCtx?.onGripPointerDown(task, e)}
+          onPointerDown={(e) => ctx?.onGripPointerDown(task, e)}
           className="shrink-0 mt-1.5 p-1 -ml-1 rounded text-text-muted/40 hover:text-text-muted cursor-grab active:cursor-grabbing touch-none"
           aria-label="Drag to move task"
         >
@@ -274,14 +438,14 @@ function TaskNode({
         <TaskCheckbox id={task.id} done={task.done} />
 
         <div className="flex-1 min-w-0">
+          {parentTask && (
+            <p className="md:hidden text-[10px] text-text-muted/70 mb-0.5 truncate">under {parentTask.title}</p>
+          )}
           <div className="flex items-center gap-2 flex-wrap">
             {hasChildren && (
               <button
-                onClick={() => setExpanded((e) => !e)}
-                className={clsx(
-                  "shrink-0 flex items-center justify-center rounded-full border border-border text-text-muted hover:text-text hover:border-accent transition-colors",
-                  isRoot ? "w-5 h-5 text-xs" : "w-4 h-4 text-[10px]",
-                )}
+                onClick={() => ctx?.toggleExpand(task.id)}
+                className="shrink-0 flex items-center justify-center w-5 h-5 text-xs rounded-full border border-border text-text-muted hover:text-text hover:border-accent transition-colors"
                 aria-label={expanded ? "Collapse subtasks" : "Expand subtasks"}
               >
                 {expanded ? "▾" : "▸"}
@@ -317,7 +481,9 @@ function TaskNode({
             )}
           </div>
           <div className="flex items-center gap-2 mt-1 flex-wrap">
-            <TagPill tag={tag} />
+            <button type="button" onClick={() => setEditingTag((v) => !v)} aria-label="Change tag">
+              <TagPill tag={tag} />
+            </button>
             <WheelDatePicker
               value={task.due_date}
               onChange={saveDate}
@@ -351,11 +517,19 @@ function TaskNode({
               </button>
             )}
           </div>
+
+          {editingTag && (
+            <div className="mt-2">
+              <TagSelect tags={tags} value={task.tag_id} onChange={saveTag} />
+            </div>
+          )}
+
           {addingChild && (
             <div className="mt-2">
               <QuickAddTask
                 tags={tags}
                 parentId={task.id}
+                defaultTagId={task.tag_id}
                 compact
                 onDone={() => setAddingChild(false)}
               />
@@ -363,19 +537,6 @@ function TaskNode({
           )}
         </div>
       </div>
-
-      {expanded && children.length > 0 && (
-        <ul
-          className={clsx(
-            "border-l-2 border-border space-y-1.5",
-            isRoot ? "ml-9 pl-4 pb-3 pr-3" : "ml-8 pl-4",
-          )}
-        >
-          {children.map((child) => (
-            <TaskNode key={child.id} task={child} byParent={byParent} tags={tags} />
-          ))}
-        </ul>
-      )}
     </li>
   );
 }

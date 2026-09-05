@@ -17,8 +17,9 @@ export default async function TasksPage({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: tags }, { data: tasks }, { data: profile }] = await Promise.all([
+  const [{ data: tags }, { data: tagGroups }, { data: tasks }, { data: profile }] = await Promise.all([
     supabase.from("tags").select("*").eq("archived", false).order("sort_order"),
+    supabase.from("tag_groups").select("*").order("sort_order"),
     supabase
       .from("tasks")
       .select("*")
@@ -45,7 +46,7 @@ export default async function TasksPage({
       <div className="flex items-center justify-between mb-6 gap-3">
         <h1 className="font-display text-3xl">Tasks</h1>
         <div className="flex items-center gap-2">
-          <TagQuickAddModal />
+          <TagQuickAddModal groups={tagGroups ?? []} />
           <Link
             href="/tasks/archive"
             className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text transition-colors"

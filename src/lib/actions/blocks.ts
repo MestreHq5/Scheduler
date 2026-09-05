@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { deriveBlockTitle } from "@/lib/tags";
+import type { Block, TagKind } from "@/lib/database.types";
 
 async function currentUserId() {
   const supabase = await createClient();
@@ -11,6 +12,17 @@ async function currentUserId() {
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Not authenticated");
   return { supabase, userId: user.id };
+}
+
+/** Fetches a tag joined with its group, for `deriveBlockTitle` (group.is_study_unit drives the "Study {label}" treatment). */
+async function fetchTagForTitle(supabase: Awaited<ReturnType<typeof createClient>>, tagId: string) {
+  const { data, error } = await supabase
+    .from("tags")
+    .select("label, kind, group:tag_groups(is_study_unit)")
+    .eq("id", tagId)
+    .single();
+  if (error) throw error;
+  return data as unknown as { label: string; kind: TagKind | null; group: { is_study_unit: boolean } | null };
 }
 
 export async function createBlock(input: {
@@ -22,15 +34,11 @@ export async function createBlock(input: {
 }) {
   const { supabase, userId } = await currentUserId();
 
-  const { data: tag, error: tagError } = await supabase
-    .from("tags")
-    .select("label, kind")
-    .eq("id", input.tag_id)
-    .single();
-  if (tagError) throw tagError;
+  const tag = await fetchTagForTitle(supabase, input.tag_id);
 
   const { error } = await supabase.from("blocks").insert({
     ...input,
+    details: input.details ? input.details.slice(0, 30) : input.details,
     title: deriveBlockTitle(tag),
     user_id: userId,
   });
@@ -43,6 +51,33 @@ export async function createBlock(input: {
 export async function moveBlock(id: string, input: { date: string; start_time: string; end_time: string }) {
   const { supabase } = await currentUserId();
   const { error } = await supabase.from("blocks").update(input).eq("id", id);
+  if (error) throw error;
+  revalidatePath("/calendar");
+  revalidatePath("/");
+}
+
+/** Edits a block from the calendar's click-to-edit modal. Re-derives the title when the tag changes. */
+export async function updateBlock(
+  id: string,
+  input: Partial<{
+    tag_id: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    details: string | null;
+  }>,
+) {
+  const { supabase } = await currentUserId();
+
+  const patch: Partial<Block> = { ...input };
+  if (input.details) patch.details = input.details.slice(0, 30);
+
+  if (input.tag_id) {
+    const tag = await fetchTagForTitle(supabase, input.tag_id);
+    patch.title = deriveBlockTitle(tag);
+  }
+
+  const { error } = await supabase.from("blocks").update(patch).eq("id", id);
   if (error) throw error;
   revalidatePath("/calendar");
   revalidatePath("/");

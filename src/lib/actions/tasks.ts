@@ -18,6 +18,7 @@ export async function createTask(input: {
   due_date: string | null;
   parent_id: string | null;
 }) {
+  if (!input.tag_id) throw new Error("A task needs a tag.");
   const { supabase, userId } = await currentUserId();
   const { error } = await supabase.from("tasks").insert({ ...input, user_id: userId });
   if (error) throw error;

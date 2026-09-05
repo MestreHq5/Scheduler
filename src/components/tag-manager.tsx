@@ -2,11 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { clsx } from "clsx";
-import type { Tag } from "@/lib/database.types";
+import type { Tag, TagGroup } from "@/lib/database.types";
 import { deleteTag, setTagArchived, updateTag } from "@/lib/actions/tags";
 import { TagQuickAddModal } from "@/components/tag-quick-add-modal";
+import { Dropdown } from "@/components/dropdown";
 
-export function TagManager({ tags }: { tags: Tag[] }) {
+const NO_GROUP = "__none__";
+
+export function TagManager({ tags, groups }: { tags: Tag[]; groups: TagGroup[] }) {
   const active = tags.filter((t) => !t.archived);
   const archived = tags.filter((t) => t.archived);
 
@@ -14,12 +17,12 @@ export function TagManager({ tags }: { tags: Tag[] }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-xs text-text-muted">Add new tags from the Tasks page.</p>
-        <TagQuickAddModal />
+        <TagQuickAddModal groups={groups} />
       </div>
 
       <ul className="space-y-1.5">
         {active.map((t) => (
-          <TagRow key={t.id} tag={t} />
+          <TagRow key={t.id} tag={t} groups={groups} />
         ))}
       </ul>
 
@@ -30,7 +33,7 @@ export function TagManager({ tags }: { tags: Tag[] }) {
           </summary>
           <ul className="space-y-1.5 mt-2">
             {archived.map((t) => (
-              <TagRow key={t.id} tag={t} />
+              <TagRow key={t.id} tag={t} groups={groups} />
             ))}
           </ul>
         </details>
@@ -39,7 +42,7 @@ export function TagManager({ tags }: { tags: Tag[] }) {
   );
 }
 
-function TagRow({ tag }: { tag: Tag }) {
+function TagRow({ tag, groups }: { tag: Tag; groups: TagGroup[] }) {
   const [pending, startTransition] = useTransition();
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(tag.label);
@@ -71,7 +74,12 @@ function TagRow({ tag }: { tag: Tag }) {
           {tag.label}
         </button>
       )}
-      <span className="text-xs text-text-muted">{tag.kind === "unit" ? "unit" : "other"}</span>
+      <Dropdown
+        value={tag.group_id ?? NO_GROUP}
+        onChange={(next) => startTransition(() => updateTag(tag.id, { group_id: next === NO_GROUP ? null : next }))}
+        className="w-36"
+        options={[{ value: NO_GROUP, label: "No group" }, ...groups.map((g) => ({ value: g.id, label: g.label }))]}
+      />
       <button
         disabled={pending}
         onClick={() => startTransition(() => setTagArchived(tag.id, !tag.archived))}

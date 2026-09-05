@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import type { TagKind } from "@/lib/database.types";
 
 async function currentUserId() {
   const supabase = await createClient();
@@ -13,7 +12,7 @@ async function currentUserId() {
   return { supabase, userId: user.id };
 }
 
-export async function createTag(input: { label: string; color: string; kind: TagKind }) {
+export async function createTag(input: { label: string; color: string; group_id: string | null }) {
   const { supabase, userId } = await currentUserId();
   const { error } = await supabase.from("tags").insert({ ...input, user_id: userId });
   if (error) throw error;
@@ -22,7 +21,7 @@ export async function createTag(input: { label: string; color: string; kind: Tag
 
 export async function updateTag(
   id: string,
-  input: Partial<{ label: string; color: string; kind: TagKind }>,
+  input: Partial<{ label: string; color: string; group_id: string | null }>,
 ) {
   const { supabase } = await currentUserId();
   const { error } = await supabase.from("tags").update(input).eq("id", id);

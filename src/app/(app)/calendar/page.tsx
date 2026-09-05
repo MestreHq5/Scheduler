@@ -1,8 +1,8 @@
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { QuickAddBlock } from "@/components/quick-add-block";
 import { WeekCalendar } from "@/components/week-calendar";
 import { DuplicateWeekButton } from "@/components/duplicate-week-button";
+import { WeekNav } from "@/components/week-nav";
 import { addDays, startOfWeek, todayInTimezone, weekDates } from "@/lib/dates";
 import type { Block } from "@/lib/database.types";
 
@@ -55,22 +55,14 @@ export default async function CalendarPage({
         <QuickAddBlock tags={tags ?? []} defaultDate={today} />
       </div>
 
-      <div className="flex items-center justify-between mb-4">
-        <Link href={`/calendar?week=${prevWeek}`} className="text-sm text-text-muted hover:text-text">
-          ← prev
-        </Link>
-        <p className="text-sm font-medium">
-          {monday} – {weekEnd}
-        </p>
-        <Link href={`/calendar?week=${nextWeek}`} className="text-sm text-text-muted hover:text-text">
-          next →
-        </Link>
-      </div>
+      <WeekNav prevWeek={prevWeek} nextWeek={nextWeek} label={`${monday} – ${weekEnd}`} />
 
       <WeekCalendar
         weekDates={dates}
         blocks={(blocks as unknown as BlockWithTag[]) ?? []}
+        tags={tags ?? []}
         today={today}
+        timezone={timezone}
       />
     </div>
   );

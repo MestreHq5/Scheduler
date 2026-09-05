@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import type { TagKind } from "@/lib/database.types";
+import Link from "next/link";
+import type { TagGroup } from "@/lib/database.types";
 import { createTag } from "@/lib/actions/tags";
+import { randomTagColor } from "@/lib/tags";
+import { Dropdown } from "@/components/dropdown";
 
-export function TagQuickAddModal() {
+const NO_GROUP = "__none__";
+
+export function TagQuickAddModal({ groups }: { groups: TagGroup[] }) {
   const [open, setOpen] = useState(false);
   const [label, setLabel] = useState("");
-  const [color, setColor] = useState("#6366f1");
-  const [kind, setKind] = useState<TagKind>("unit");
+  const [groupId, setGroupId] = useState(NO_GROUP);
+  const [color, setColor] = useState(() => randomTagColor());
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -20,14 +25,20 @@ export function TagQuickAddModal() {
     return () => document.removeEventListener("keydown", onKey);
   }, [open]);
 
+  function onGroupChange(next: string) {
+    setGroupId(next);
+    const group = groups.find((g) => g.id === next);
+    setColor(group ? group.color : randomTagColor());
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!label.trim()) return;
     startTransition(async () => {
-      await createTag({ label: label.trim(), color, kind });
+      await createTag({ label: label.trim(), color, group_id: groupId === NO_GROUP ? null : groupId });
       setLabel("");
-      setColor("#6366f1");
-      setKind("unit");
+      setGroupId(NO_GROUP);
+      setColor(randomTagColor());
       setOpen(false);
     });
   }
@@ -78,22 +89,25 @@ export function TagQuickAddModal() {
                   onChange={(e) => setColor(e.target.value)}
                   className="w-9 h-9 rounded-lg border border-border bg-surface-2 shrink-0"
                 />
-                <select
-                  value={kind}
-                  onChange={(e) => setKind(e.target.value as TagKind)}
-                  className="flex-1 rounded-lg bg-surface-2 border border-border px-2 py-2 text-sm"
-                >
-                  <option value="unit">Curricular unit</option>
-                  <option value="other">Other</option>
-                </select>
+                <Dropdown
+                  value={groupId}
+                  onChange={onGroupChange}
+                  className="flex-1"
+                  options={[{ value: NO_GROUP, label: "No group" }, ...groups.map((g) => ({ value: g.id, label: g.label }))]}
+                />
               </div>
-              <button
-                type="submit"
-                disabled={pending || !label.trim()}
-                className="w-full rounded-lg bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-50"
-              >
-                {pending ? "Adding…" : "Add tag"}
-              </button>
+              <div className="flex items-center justify-between">
+                <Link href="/settings" className="text-xs text-text-muted hover:text-text underline underline-offset-2">
+                  Manage groups →
+                </Link>
+                <button
+                  type="submit"
+                  disabled={pending || !label.trim()}
+                  className="rounded-lg bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-50"
+                >
+                  {pending ? "Adding…" : "Add tag"}
+                </button>
+              </div>
             </form>
           </div>
         </div>

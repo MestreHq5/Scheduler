@@ -13,6 +13,7 @@ export function QuickAddBlock({ tags, defaultDate }: { tags: Tag[]; defaultDate:
   const [date, setDate] = useState(defaultDate);
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("11:00");
+  const [details, setDetails] = useState("");
   const [pending, startTransition] = useTransition();
 
   const selectedTag = tags.find((t) => t.id === tagId) ?? null;
@@ -21,7 +22,14 @@ export function QuickAddBlock({ tags, defaultDate }: { tags: Tag[]; defaultDate:
     e.preventDefault();
     if (!tagId || start >= end) return;
     startTransition(async () => {
-      await createBlock({ tag_id: tagId, date, start_time: start, end_time: end });
+      await createBlock({
+        tag_id: tagId,
+        date,
+        start_time: start,
+        end_time: end,
+        details: details.trim() ? details.trim() : null,
+      });
+      setDetails("");
     });
   }
 
@@ -73,6 +81,13 @@ export function QuickAddBlock({ tags, defaultDate }: { tags: Tag[]; defaultDate:
               {value}
             </button>
           )}
+        />
+        <input
+          value={details}
+          onChange={(e) => setDetails(e.target.value)}
+          maxLength={30}
+          placeholder="Details (e.g. room)"
+          className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent w-36"
         />
         <button
           type="submit"

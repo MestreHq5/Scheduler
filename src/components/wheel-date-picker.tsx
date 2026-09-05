@@ -114,14 +114,19 @@ function DatePanel({
         </button>
       </div>
 
-      <div className="relative flex justify-center gap-2" style={{ height: ITEM_H * VISIBLE }}>
+      <div className="relative" style={{ height: ITEM_H * VISIBLE }}>
+        {/* Positioned elements paint after in-flow siblings regardless of DOM
+            order, so this highlight bar would otherwise sit on top of the
+            wheel numbers. Give the columns their own stacking context above it. */}
         <div
           className="pointer-events-none absolute inset-x-0 rounded-lg bg-surface-2"
           style={{ top: PAD, height: ITEM_H }}
         />
-        <WheelColumn items={days} value={clampedDay} onSettle={setD} />
-        <WheelColumn items={months} value={m} onSettle={setM} format={(n) => MONTH_LABELS[n - 1]!} />
-        <WheelColumn items={years} value={y} onSettle={setY} />
+        <div className="relative z-10 flex justify-center gap-2">
+          <WheelColumn items={days} value={clampedDay} onSettle={setD} />
+          <WheelColumn items={months} value={m} onSettle={setM} format={(n) => MONTH_LABELS[n - 1]!} />
+          <WheelColumn items={years} value={y} onSettle={setY} />
+        </div>
       </div>
 
       <div className="flex items-center gap-3 mt-4">

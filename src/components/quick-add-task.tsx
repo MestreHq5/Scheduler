@@ -9,23 +9,25 @@ import { WheelDatePicker } from "@/components/wheel-date-picker";
 export function QuickAddTask({
   tags,
   parentId = null,
+  defaultTagId = null,
   compact = false,
   onDone,
 }: {
   tags: Tag[];
   parentId?: string | null;
+  defaultTagId?: string | null;
   compact?: boolean;
   onDone?: () => void;
 }) {
   const [title, setTitle] = useState("");
-  const [tagId, setTagId] = useState<string | null>(null);
+  const [tagId, setTagId] = useState<string | null>(defaultTagId);
   const [dueDate, setDueDate] = useState<string | null>(null);
   const [showTags, setShowTags] = useState(!compact);
   const [pending, startTransition] = useTransition();
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || !tagId) return;
     startTransition(async () => {
       await createTask({
         title: title.trim(),
@@ -35,7 +37,7 @@ export function QuickAddTask({
       });
       setTitle("");
       setDueDate(null);
-      setTagId(null);
+      setTagId(defaultTagId);
       onDone?.();
     });
   }
@@ -71,14 +73,15 @@ export function QuickAddTask({
         )}
         <button
           type="submit"
-          disabled={pending || !title.trim()}
+          disabled={pending || !title.trim() || !tagId}
           className="rounded-lg bg-accent text-bg font-semibold px-4 py-2 text-sm disabled:opacity-50"
         >
           Add
         </button>
       </div>
-      {showTags && tags.length > 0 && (
-        <TagSelect tags={tags} value={tagId} onChange={setTagId} />
+      {showTags && tags.length > 0 && <TagSelect tags={tags} value={tagId} onChange={setTagId} />}
+      {title.trim() && !tagId && tags.length > 0 && (
+        <p className="text-[11px] text-text-muted">Pick a tag first — it&apos;s required.</p>
       )}
     </form>
   );

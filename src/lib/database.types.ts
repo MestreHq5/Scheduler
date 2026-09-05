@@ -31,7 +31,8 @@ export interface Database {
           user_id: string;
           label: string;
           color: string;
-          kind: TagKind;
+          kind: TagKind | null;
+          group_id: string | null;
           archived: boolean;
           sort_order: number;
           created_at: string;
@@ -39,9 +40,32 @@ export interface Database {
         Insert: Partial<Database["public"]["Tables"]["tags"]["Row"]> & {
           user_id: string;
           label: string;
-          kind: TagKind;
         };
         Update: Partial<Database["public"]["Tables"]["tags"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "tags_group_id_fkey";
+            columns: ["group_id"];
+            referencedRelation: "tag_groups";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      tag_groups: {
+        Row: {
+          id: string;
+          user_id: string;
+          label: string;
+          color: string;
+          is_study_unit: boolean;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: Partial<Database["public"]["Tables"]["tag_groups"]["Row"]> & {
+          user_id: string;
+          label: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["tag_groups"]["Row"]>;
         Relationships: [];
       };
       tasks: {
@@ -177,6 +201,7 @@ export interface Database {
 }
 
 export type Tag = Database["public"]["Tables"]["tags"]["Row"];
+export type TagGroup = Database["public"]["Tables"]["tag_groups"]["Row"];
 export type Task = Database["public"]["Tables"]["tasks"]["Row"];
 export type Block = Database["public"]["Tables"]["blocks"]["Row"];
 export type IcsFeed = Database["public"]["Tables"]["ics_feeds"]["Row"];

@@ -6,6 +6,7 @@ import { clsx } from "clsx";
 import { useTransition } from "react";
 import { signOut } from "@/lib/actions/auth";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { Logo } from "@/components/logo";
 
 const NAV = [
   { href: "/", label: "Hub", icon: HomeIcon },
@@ -23,7 +24,10 @@ export function NavShell({ email, children }: { email: string; children: React.R
     <div className="min-h-dvh md:flex md:mx-auto md:max-w-[1440px]">
       <aside className="hidden md:flex md:flex-col md:w-56 md:sticky md:top-0 md:h-dvh border-r border-border p-6 shrink-0">
         <div className="flex-1 flex flex-col justify-center">
-          <p className="font-display text-xl mb-8">Scheduler</p>
+          <div className="flex flex-col items-center text-center mb-8">
+            <Logo className="w-9 h-9 mb-2" />
+            <p className="font-display text-xl">Scheduler</p>
+          </div>
           <nav className="flex flex-col gap-1">
             {NAV.map(({ href, label, icon: Icon }) => {
               const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -43,7 +47,12 @@ export function NavShell({ email, children }: { email: string; children: React.R
             })}
           </nav>
         </div>
-        <div className="mt-auto">
+        <div className="mt-auto pt-6">
+          <div className="flex items-center gap-2 mb-5">
+            <span className="h-px flex-1 bg-gradient-to-r from-transparent to-border" />
+            <span className="w-1.5 h-1.5 rounded-full bg-border" />
+            <span className="h-px flex-1 bg-gradient-to-l from-transparent to-border" />
+          </div>
           <p className="text-xs text-text-muted truncate mb-3">{email}</p>
           <ThemeToggle />
           <button
@@ -62,8 +71,8 @@ export function NavShell({ email, children }: { email: string; children: React.R
         <main
           className={clsx(
             "mx-auto pt-10 pb-24 md:pb-10 md:pt-14",
-            pathname.startsWith("/calendar")
-              ? "max-w-full px-2 md:px-4"
+            pathname.startsWith("/calendar") || pathname.startsWith("/tasks")
+              ? "max-w-full px-3 md:px-6"
               : "max-w-3xl px-4 md:px-8",
           )}
         >

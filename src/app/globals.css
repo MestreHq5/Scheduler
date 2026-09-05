@@ -15,6 +15,10 @@
   --color-accent-2: var(--scheduler-accent-2);
   --color-success: var(--scheduler-success);
   --color-danger: var(--scheduler-danger);
+
+  --color-level-0: var(--scheduler-level-0);
+  --color-level-1: var(--scheduler-level-1);
+  --color-level-2: var(--scheduler-level-2);
 }
 
 /* Dark "dusk cockpit" theme — the default look. */
@@ -23,7 +27,7 @@
   --scheduler-bg: #0b0f1a;
   --scheduler-surface: #121a2b;
   --scheduler-surface-2: #1a2440;
-  --scheduler-border: #283253;
+  --scheduler-border: #454b5e;
   --scheduler-text: #eef1f8;
   --scheduler-text-muted: #94a0c2;
   --scheduler-accent: #ff8a4c;
@@ -31,15 +35,21 @@
   --scheduler-accent-2: #5eead4;
   --scheduler-success: #34d399;
   --scheduler-danger: #f87171;
+
+  /* Task-tree depth shading — pure gray scale, deliberately not tinted
+     navy like surface/surface-2, so nesting reads at a glance. */
+  --scheduler-level-0: #2a2a2e;
+  --scheduler-level-1: #202023;
+  --scheduler-level-2: #17171a;
 }
 
-/* Light theme — same navy/amber identity, lifted onto a warm paper ground. */
+/* Light theme — same navy/amber identity, lifted onto a neutral paper ground. */
 :root[data-theme="light"] {
   color-scheme: light;
-  --scheduler-bg: #f6f4ef;
+  --scheduler-bg: #f3f4f4;
   --scheduler-surface: #ffffff;
   --scheduler-surface-2: #eef0f6;
-  --scheduler-border: #dbdfe9;
+  --scheduler-border: #d9dade;
   --scheduler-text: #171d30;
   --scheduler-text-muted: #5b6478;
   --scheduler-accent: #e2662a;
@@ -47,6 +57,10 @@
   --scheduler-accent-2: #0f9488;
   --scheduler-success: #15803d;
   --scheduler-danger: #dc2626;
+
+  --scheduler-level-0: #e7e7e9;
+  --scheduler-level-1: #eff0f1;
+  --scheduler-level-2: #f7f7f8;
 }
 
 body {

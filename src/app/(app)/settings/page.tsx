@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { Section } from "@/components/section";
 import { TagManager } from "@/components/tag-manager";
+import { TagGroupManager } from "@/components/tag-group-manager";
 import { TimezoneSettings } from "@/components/timezone-settings";
 import { IcsFeedSettings } from "@/components/ics-feed-settings";
 import { DragHoldSettings } from "@/components/drag-hold-settings";
@@ -11,9 +12,10 @@ export default async function SettingsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: profile }, { data: tags }, { data: icsFeeds }] = await Promise.all([
+  const [{ data: profile }, { data: tags }, { data: tagGroups }, { data: icsFeeds }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user!.id).single(),
     supabase.from("tags").select("*").order("sort_order"),
+    supabase.from("tag_groups").select("*").order("sort_order"),
     supabase.from("ics_feeds").select("*").eq("user_id", user!.id),
   ]);
 
@@ -33,8 +35,17 @@ export default async function SettingsPage() {
         </p>
       </Section>
 
+      <Section title="Tag groups">
+        <TagGroupManager groups={tagGroups ?? []} />
+        <p className="text-xs text-text-muted mt-2">
+          Groups give tags an optional color and label (e.g. &quot;Curricular
+          Units&quot;, &quot;Events&quot;). Mark a group &quot;study unit&quot; to prefix its
+          tags&apos; block titles with &quot;Study&quot;.
+        </p>
+      </Section>
+
       <Section title="Tags">
-        <TagManager tags={tags ?? []} />
+        <TagManager tags={tags ?? []} groups={tagGroups ?? []} />
       </Section>
 
       <Section title="Interaction">

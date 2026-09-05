@@ -2,13 +2,17 @@
 
 import { useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { clsx } from "clsx";
-import type { Block } from "@/lib/database.types";
+import type { Block, Tag } from "@/lib/database.types";
 import { deleteBlock, moveBlock } from "@/lib/actions/blocks";
+import { nowClockInTimezone } from "@/lib/dates";
+import { contrastText } from "@/lib/color";
+import { BlockEditModal } from "@/components/block-edit-modal";
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const VISIBLE_HOURS = 12; // the viewport always shows this many hours without scrolling
 const DEFAULT_HOUR_HEIGHT = 48;
 const SNAP_MINUTES = 15;
+const CLICK_THRESHOLD_PX = 5; // pointer movement below this is a click, not a drag
 
 type BlockWithTag = Block & { tag: { label: string; color: string } | null };
 
@@ -18,6 +22,9 @@ type DragState = {
   offsetMinutes: number; // pointer offset from the block's top edge, in minutes
   date: string;
   startMinutes: number;
+  pointerStartX: number;
+  pointerStartY: number;
+  moved: boolean;
 };
 
 function timeToMinutes(t: string) {
@@ -31,17 +38,6 @@ function minutesToTime(min: number) {
   const h = Math.floor(snapped / 60);
   const m = snapped % 60;
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-/** Given a hex color, picks black or white text for legible contrast on a solid fill. */
-function contrastText(hex: string) {
-  const c = hex.replace("#", "");
-  if (c.length !== 6) return "#ffffff";
-  const r = parseInt(c.slice(0, 2), 16);
-  const g = parseInt(c.slice(2, 4), 16);
-  const b = parseInt(c.slice(4, 6), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.6 ? "#0b0f1a" : "#ffffff";
 }
 
 /** Groups time-overlapping blocks in a day into clusters and splits each cluster's width evenly. */
@@ -76,11 +72,15 @@ type MoveUpdate = { id: string; date: string; start_time: string; end_time: stri
 export function WeekCalendar({
   weekDates,
   blocks,
+  tags,
   today,
+  timezone,
 }: {
   weekDates: string[];
   blocks: BlockWithTag[];
+  tags: Tag[];
   today: string;
+  timezone: string;
 }) {
   const [optimisticBlocks, applyOptimisticMove] = useOptimistic(blocks, (state, update: MoveUpdate) =>
     state.map((b) => (b.id === update.id ? { ...b, date: update.date, start_time: update.start_time, end_time: update.end_time } : b)),
@@ -96,6 +96,7 @@ export function WeekCalendar({
   const [hourHeight, setHourHeight] = useState(DEFAULT_HOUR_HEIGHT);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editingBlock, setEditingBlock] = useState<BlockWithTag | null>(null);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -103,6 +104,18 @@ export function WeekCalendar({
     const t = setTimeout(() => setError(null), 6000);
     return () => clearTimeout(t);
   }, [error]);
+
+  // Live "now" line — recomputed in the user's configured timezone, not the
+  // browser's, since those can differ (see profile timezone setting).
+  const [nowMinutes, setNowMinutes] = useState<number | null>(null);
+  useEffect(() => {
+    function update() {
+      setNowMinutes(timeToMinutes(nowClockInTimezone(timezone)));
+    }
+    update();
+    const id = setInterval(update, 30_000);
+    return () => clearInterval(id);
+  }, [timezone]);
 
   const dayHeight = hourHeight * 24;
 
@@ -137,15 +150,22 @@ export function WeekCalendar({
       offsetMinutes,
       date: block.date,
       startMinutes: timeToMinutes(block.start_time),
+      pointerStartX: e.clientX,
+      pointerStartY: e.clientY,
+      moved: false,
     });
     e.currentTarget.setPointerCapture(e.pointerId);
   }
 
   function onPointerMove(e: React.PointerEvent) {
     if (!drag) return;
+    const movedFar = Math.hypot(e.clientX - drag.pointerStartX, e.clientY - drag.pointerStartY) > CLICK_THRESHOLD_PX;
     const target = document.elementFromPoint(e.clientX, e.clientY);
     const col = target?.closest<HTMLElement>("[data-day-col]");
-    if (!col) return;
+    if (!col) {
+      if (movedFar && !drag.moved) setDrag((d) => d && { ...d, moved: true });
+      return;
+    }
     const rect = col.getBoundingClientRect();
     const minutesAtPointer = ((e.clientY - rect.top) / hourHeight) * 60;
     setDrag((d) =>
@@ -153,12 +173,23 @@ export function WeekCalendar({
         ...d,
         date: col.dataset.dayCol!,
         startMinutes: minutesAtPointer - d.offsetMinutes,
+        moved: d.moved || movedFar,
       },
     );
   }
 
   function endDrag() {
     if (!drag) return;
+
+    // A stationary pointerdown/up is a click, not a drag — open the edit
+    // modal instead of firing a no-op moveBlock.
+    if (!drag.moved) {
+      const clicked = optimisticBlocks.find((b) => b.id === drag.id) ?? null;
+      setDrag(null);
+      if (clicked) setEditingBlock(clicked);
+      return;
+    }
+
     const snappedStart = minutesToTime(drag.startMinutes);
     const endTime = minutesToTime(timeToMinutes(snappedStart) + drag.duration);
     const update: MoveUpdate = { id: drag.id, date: drag.date, start_time: snappedStart, end_time: endTime };
@@ -229,9 +260,9 @@ export function WeekCalendar({
         </div>
 
         {weekDates.map((date) => {
-          const dayBlocks = (byDate.get(date) ?? []).filter((b) => !drag || b.id !== drag.id);
+          const dayBlocks = (byDate.get(date) ?? []).filter((b) => !(drag?.moved && b.id === drag.id));
           const layout = layoutDay(dayBlocks);
-          const showGhost = drag?.date === date;
+          const showGhost = drag?.moved && drag.date === date;
 
           return (
             <div
@@ -269,11 +300,25 @@ export function WeekCalendar({
                   }}
                 />
               )}
+
+              {date === today && nowMinutes !== null && (
+                <div
+                  className="absolute inset-x-0 z-10 flex items-center pointer-events-none"
+                  style={{ top: (nowMinutes / 60) * hourHeight }}
+                >
+                  <span className="w-2 h-2 rounded-full bg-accent -ml-1 shrink-0" />
+                  <span className="h-px flex-1 bg-accent" />
+                </div>
+              )}
             </div>
           );
         })}
       </div>
       </div>
+
+      {editingBlock && (
+        <BlockEditModal block={editingBlock} tags={tags} onClose={() => setEditingBlock(null)} />
+      )}
     </div>
   );
 }
@@ -327,6 +372,11 @@ function BlockCard({
       <span style={{ opacity: 0.85 }}>
         {block.start_time.slice(0, 5)}–{block.end_time.slice(0, 5)}
       </span>
+      {block.details && (
+        <span className="block truncate" style={{ opacity: 0.75 }}>
+          {block.details}
+        </span>
+      )}
     </div>
   );
 }
