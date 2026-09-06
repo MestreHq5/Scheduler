@@ -50,8 +50,11 @@ day-to-day, desktop for weekly (Sunday) planning.
 - **`.ics` import is a one-shot action, not a persistent feed**
   (`importIcsAsTag`, `src/lib/actions/ics.ts`): pick a file, type a tag
   name, every event becomes a `blocks` row under a freshly-created tag
-  (one shared color/title). No stored feed, no re-sync — import again
-  under a new tag name any time. Converts UTC `DTSTART`/`DTEND` to
+  (one shared color/title). Maps `SUMMARY` → short `details`, `LOCATION`
+  → `location`, `DESCRIPTION` → long-form `notes` (never shown on the
+  card, only in `BlockEditModal`); `CATEGORIES` and everything else is
+  ignored. No stored feed, no re-sync — import again under a new tag
+  name any time. Converts UTC `DTSTART`/`DTEND` to
   wall-clock via `instantToLocalParts` using the profile's timezone *at
   import time*, then it's fixed forever like any block. `parseIcs`
   (`src/lib/ics.ts`) doesn't expand `RRULE` — the Settings Help modal

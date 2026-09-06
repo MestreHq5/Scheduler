@@ -92,11 +92,13 @@ export function IcsHelpModal() {
                   <li>
                     <code>LOCATION</code> — shown on the card next to the time. Optional.
                   </li>
+                  <li>
+                    <code>DESCRIPTION</code> — a longer note, if you have one. It&apos;s never shown on the
+                    calendar itself — only inside a block&apos;s edit popup. Optional.
+                  </li>
                 </ul>
                 <p className="mt-1">
-                  Nothing else is read — <code>DESCRIPTION</code>, <code>CATEGORIES</code>, and any other field are
-                  ignored. There&apos;s no way to import a longer note per event; add one afterward from the
-                  calendar&apos;s edit popup if you need it.
+                  Nothing else is read — <code>CATEGORIES</code> and any other field are ignored.
                 </p>
               </div>
 
@@ -121,6 +123,7 @@ DTSTART:20260115T090000Z
 DTEND:20260115T103000Z
 SUMMARY:AE101 Lecture
 LOCATION:Room 204
+DESCRIPTION:Bring the slides from last week — midterm review.
 END:VEVENT
 END:VCALENDAR`}
                 </pre>

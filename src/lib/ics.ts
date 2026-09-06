@@ -6,6 +6,8 @@ export interface ParsedIcsEvent {
   startsAt: string;
   endsAt: string;
   location: string | null;
+  /** DESCRIPTION — the event's long-form text, if any. Maps to the block's `notes`. */
+  description: string | null;
 }
 
 export function parseIcs(text: string): ParsedIcsEvent[] {
@@ -21,6 +23,7 @@ export function parseIcs(text: string): ParsedIcsEvent[] {
       startsAt: event.startDate.toJSDate().toISOString(),
       endsAt: event.endDate.toJSDate().toISOString(),
       location: event.location || null,
+      description: event.description || null,
     };
   });
 }

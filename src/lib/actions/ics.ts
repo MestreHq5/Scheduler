@@ -19,11 +19,10 @@ async function currentUserId() {
  * One-shot .ics import — not a persistent feed, nothing to re-sync. Creates
  * a brand-new tag named `tagLabel` and adds every event in the file as a
  * block under that tag (same color/title, like any tag-derived block).
- * The event's SUMMARY becomes the block's short `details` text and
- * LOCATION becomes `location` — block `title` stays tag-derived, never
- * typed. `notes` (the block's long-form field) is never set by import;
- * DESCRIPTION isn't read at all. Importing again (same file or a
- * different one) just makes another tag.
+ * The event's SUMMARY becomes the block's short `details` text, LOCATION
+ * becomes `location`, and DESCRIPTION becomes the long-form `notes` —
+ * block `title` stays tag-derived, never typed. Importing again (same
+ * file or a different one) just makes another tag.
  */
 export async function importIcsAsTag(tagLabel: string, file: File) {
   const { supabase, userId } = await currentUserId();
@@ -58,6 +57,7 @@ export async function importIcsAsTag(tagLabel: string, file: File) {
       end_time: end.time,
       details: e.title.slice(0, 30),
       location: e.location ? e.location.slice(0, 60) : e.location,
+      notes: e.description,
     };
   });
 
