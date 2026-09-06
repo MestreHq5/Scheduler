@@ -21,7 +21,7 @@ export async function createTagGroup(input: { label: string; color: string; is_s
 
 export async function updateTagGroup(
   id: string,
-  input: Partial<{ label: string; color: string; is_study_unit: boolean }>,
+  input: Partial<{ label: string; color: string; is_study_unit: boolean; exclude_from_duplicate: boolean }>,
 ) {
   const { supabase } = await currentUserId();
   const { error } = await supabase.from("tag_groups").update(input).eq("id", id);

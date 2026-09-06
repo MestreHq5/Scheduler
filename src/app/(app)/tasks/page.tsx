@@ -18,8 +18,8 @@ export default async function TasksPage({
   } = await supabase.auth.getUser();
 
   const [{ data: tags }, { data: tagGroups }, { data: tasks }, { data: profile }] = await Promise.all([
-    supabase.from("tags").select("*").eq("archived", false).order("sort_order"),
-    supabase.from("tag_groups").select("*").order("sort_order"),
+    supabase.from("tags").select("*").eq("archived", false).order("sort_order").order("created_at"),
+    supabase.from("tag_groups").select("*").order("sort_order").order("created_at"),
     supabase
       .from("tasks")
       .select("*")

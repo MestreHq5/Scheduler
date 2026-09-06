@@ -34,6 +34,7 @@ export interface Database {
           kind: TagKind | null;
           group_id: string | null;
           counts_as_work: boolean;
+          exclude_from_duplicate: boolean;
           archived: boolean;
           sort_order: number;
           created_at: string;
@@ -59,6 +60,7 @@ export interface Database {
           label: string;
           color: string;
           is_study_unit: boolean;
+          exclude_from_duplicate: boolean;
           sort_order: number;
           created_at: string;
         };
@@ -103,6 +105,8 @@ export interface Database {
           start_time: string;
           end_time: string;
           details: string | null;
+          ics_source: IcsSource | null;
+          ics_uid: string | null;
           archived: boolean;
           created_at: string;
         };
@@ -129,6 +133,7 @@ export interface Database {
           user_id: string;
           source: IcsSource;
           label: string | null;
+          tag_id: string | null;
           kind: IcsFeedKind;
           url: string | null;
           storage_path: string | null;
@@ -143,7 +148,14 @@ export interface Database {
           kind: IcsFeedKind;
         };
         Update: Partial<Database["public"]["Tables"]["ics_feeds"]["Row"]>;
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "ics_feeds_tag_id_fkey";
+            columns: ["tag_id"];
+            referencedRelation: "tags";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       imported_events: {
         Row: {

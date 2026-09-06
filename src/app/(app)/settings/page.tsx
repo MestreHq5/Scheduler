@@ -3,7 +3,7 @@ import { Section } from "@/components/section";
 import { TagManager } from "@/components/tag-manager";
 import { TagGroupManager } from "@/components/tag-group-manager";
 import { TimezoneSettings } from "@/components/timezone-settings";
-import { IcsFeedSettings } from "@/components/ics-feed-settings";
+import { IcsImportForm } from "@/components/ics-import-form";
 import { DragHoldSettings } from "@/components/drag-hold-settings";
 
 export default async function SettingsPage() {
@@ -12,15 +12,11 @@ export default async function SettingsPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const [{ data: profile }, { data: tags }, { data: tagGroups }, { data: icsFeeds }] = await Promise.all([
+  const [{ data: profile }, { data: tags }, { data: tagGroups }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user!.id).single(),
-    supabase.from("tags").select("*").order("sort_order"),
-    supabase.from("tag_groups").select("*").order("sort_order"),
-    supabase.from("ics_feeds").select("*").eq("user_id", user!.id),
+    supabase.from("tags").select("*").order("sort_order").order("created_at"),
+    supabase.from("tag_groups").select("*").order("sort_order").order("created_at"),
   ]);
-
-  const classesFeed = icsFeeds?.find((f) => f.source === "classes") ?? null;
-  const testsFeed = icsFeeds?.find((f) => f.source === "tests") ?? null;
 
   return (
     <div>
@@ -29,9 +25,8 @@ export default async function SettingsPage() {
       <Section title="Timezone">
         <TimezoneSettings timezone={profile?.timezone ?? "Europe/Lisbon"} />
         <p className="text-xs text-text-muted mt-2">
-          Only affects imported calendar events going forward — past events keep
-          their original local time, and Scheduler blocks/task due dates aren&apos;t
-          timezone-relative at all.
+          Used to convert .ics import times to your local date/time at the moment you import — like every block,
+          the result is fixed then and won&apos;t move if you change timezones later.
         </p>
       </Section>
 
@@ -56,34 +51,8 @@ export default async function SettingsPage() {
         </p>
       </Section>
 
-      <Section title="Calendar sync">
-        <div className="space-y-3">
-          <IcsFeedSettings source="classes" feed={classesFeed} defaultLabel="Import 1" />
-          <IcsFeedSettings source="tests" feed={testsFeed} defaultLabel="Import 2" />
-        </div>
-
-        <div className="rounded-xl border border-dashed border-border p-4 mt-3">
-          <p className="text-sm font-medium mb-1">Google Calendar</p>
-          <p className="text-xs text-text-muted mb-3">
-            Explicit import or export — never both silently. Needs a Google Cloud
-            OAuth client with the Calendar scope (separate from the Google login
-            above); not wired up yet.
-          </p>
-          <div className="flex gap-2">
-            <button
-              disabled
-              className="rounded-lg border border-border px-3 py-2 text-xs text-text-muted cursor-not-allowed"
-            >
-              Import from Google Calendar
-            </button>
-            <button
-              disabled
-              className="rounded-lg border border-border px-3 py-2 text-xs text-text-muted cursor-not-allowed"
-            >
-              Export to Google Calendar
-            </button>
-          </div>
-        </div>
+      <Section title="Import .ics">
+        <IcsImportForm />
       </Section>
     </div>
   );

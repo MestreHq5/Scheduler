@@ -46,10 +46,50 @@ day-to-day, desktop for weekly (Sunday) planning.
   (`0003_task_move_and_completed_at.sql`). Task delete is permanent
   (`deleteTask`) — the UI always confirms first, there's no undo/trash.
 - **Blocks store plain wall-clock `date`/`start_time`/`end_time`**, not a
-  UTC instant — deliberately immune to timezone changes. `imported_events`
-  (`.ics`/Google) DO store a real UTC instant, so a timezone change only
-  needs to touch that table (freezes past events' display via `frozen_*`
-  columns, future ones re-derive live) — see `src/lib/actions/profile.ts`.
+  UTC instant — deliberately immune to timezone changes, `.ics` imports
+  included (see below). `imported_events`/`frozen_*` (`src/lib/actions/
+  profile.ts`) is a *different*, currently-unused mechanism reserved for a
+  future Google Calendar import (real UTC instants, frozen on timezone
+  change) — nothing writes to `imported_events` today.
+- **`.ics` import is a one-shot action, not a persistent feed**
+  (`importIcsAsTag`, `src/lib/actions/ics.ts`): pick a file, type a tag
+  name, and every event becomes a `blocks` row under a freshly-created tag
+  (one shared color/title for the whole import) — no stored feed, no
+  re-sync, no tracking of what was previously imported. Import again (same
+  file or a new one) any time to add more, under another tag name.
+  Converts each event's UTC `DTSTART`/`DTEND` to wall-clock via
+  `instantToLocalParts` using the profile's timezone *at import time*, then
+  it's fixed forever like any other block. `parseIcs` (`src/lib/ics.ts`)
+  doesn't expand `RRULE` — the Settings Help modal tells the user (or an AI
+  building the file for them) to write one `VEVENT` per date instead of a
+  recurrence rule. An earlier version of this feature (two fixed
+  "classes"/"tests" feed slots, persistent re-syncable feeds with a "Sync
+  now" button, `blocks.ics_source`/`ics_uid` dedupe columns, `ics_feeds.
+  tag_id`) was built and then replaced by this simpler one-shot design in
+  the same session, per direct feedback that per-source tracking and
+  "syncing" language added confusion for no benefit here. That schema is
+  still in the database (additive migrations aren't reverted without being
+  asked) but nothing reads or writes `ics_feeds`, the `ics-feeds` storage
+  bucket, or `blocks.ics_source`/`ics_uid` anymore — safe cleanup
+  candidates for a future migration, not done yet.
+- **A tag or its whole group can opt out of `duplicateWeek`**
+  (`exclude_from_duplicate`, `0008_tag_exclude_from_duplicate.sql`) — a
+  block is skipped when copying to next week if its own tag OR that tag's
+  group has the flag; tagless blocks always copy (same "tagless always
+  included" precedent as `counts_as_work`). Toggled via a "Skip copy" pill
+  next to "Work"/"Study" in Tag and Tag group settings rows.
+- **`WeekNav` force-prefetches both neighboring weeks**
+  (`router.prefetch(href, { kind: PrefetchKind.FULL })`) so clicking
+  through several weeks in a row feels instant instead of a fresh Supabase
+  round-trip per click. `PrefetchKind` isn't exported from the public
+  `next/navigation` entry — `router.prefetch`'s `kind` option is typed
+  against the real enum in Next 15, so this deep-imports `next/dist/client/
+  components/router-reducer/router-reducer-types`. The *default* prefetch
+  (no `kind`) only warms the static shell for a `searchParams`-driven
+  dynamic page like this one, not the actual Supabase data — don't
+  "simplify" this back to a bare `router.prefetch(href)`, it stops helping.
+  If a Next major upgrade breaks this deep-import path, relocate it, don't
+  delete it.
 - **Calendar-date arithmetic must never round-trip through a local-time
   `Date` + `.toISOString()`** — that silently shifts results a day under
   a positive UTC offset. This broke "next week" *and*, separately,
@@ -84,6 +124,16 @@ day-to-day, desktop for weekly (Sunday) planning.
   from the tag**, never typed, everywhere.
 - **Tag colors are freely repeatable**, not unique per tag — lets several
   tags deliberately share a "group color."
+- **Every `tags`/`tag_groups` fetch orders by `.order("sort_order")
+  .order("created_at")`, never `sort_order` alone.** `sort_order` defaults
+  to `0` for every row (no drag-reorder UI for tags/groups sets it to
+  anything else), so with an all-ties `sort_order` column Postgres doesn't
+  guarantee stable ordering across queries — a real bug where toggling a
+  "Work"/"Skip copy" pill correctly updated the clicked tag server-side,
+  but the list order shifted between the click and the revalidated
+  re-render, making it look like a *different* row's pill had toggled.
+  `created_at` is a stable, meaningful tiebreaker (oldest first). Any new
+  `tags`/`tag_groups` fetch must use both `.order()` calls, not just one.
 - Migrations are applied to the live Supabase project via a short-lived
   Node script (`pg` package + `SUPABASE_DB_URL` from `.env.local`,
   `npm install --no-save pg`, removed after) — there's no staging
@@ -109,16 +159,19 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
 
 - **`tags`**: `{ id, label, color, kind: "unit"|"other"|null (legacy),
   group_id (nullable → tag_groups), counts_as_work (default true),
-  archived, sort_order }`.
-- **`tag_groups`**: `{ id, label, color, is_study_unit, sort_order }`.
+  exclude_from_duplicate (default false), archived, sort_order }`.
+- **`tag_groups`**: `{ id, label, color, is_study_unit,
+  exclude_from_duplicate (default false), sort_order }`.
 - **`tasks`**: `{ id, title, tag_id, done (derived once it has children),
   due_date, notes, parent_id, depth (0–2), completed_at, created_at }`.
 - **`blocks`**: `{ id, tag_id, title (auto-derived), date, start_time,
-  end_time, details (≤30 chars), created_at }`.
-- **`ics_feeds`**: `{ source: "classes"|"tests" (fixed slot id), label
-  (user-facing, editable), kind: "url"|"file", url, storage_path,
-  last_sync_* }`.
-- **`imported_events`**: `{ source: "classes"|"tests"|"google", title,
+  end_time, details (≤30 chars), ics_source/ics_uid (nullable, vestigial —
+  see Rules), created_at }`.
+- **`ics_feeds`**, **`imported_events`**: still in the database but
+  vestigial — nothing reads or writes either right now (see Rules'
+  `.ics` import bullet). `ics_feeds` was `{ source: "classes"|"tests",
+  label, kind: "url"|"file", url, storage_path, tag_id, last_sync_* }`;
+  `imported_events` was `{ source: "classes"|"tests"|"google", title,
   starts_at/ends_at (UTC), location, raw_uid (dedupe), frozen_* }`.
 - **`google_calendar_connections`**: `{ google_account_email, calendar_id,
   sync_direction: "import"|"export", refresh_token }` — not wired up yet
@@ -172,8 +225,9 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   `nowClockInTimezone(timezone)` (the profile's timezone, not the
   browser's). Week nav lives in a separate `WeekNav` client component
   (`router.push` inside `useTransition`, dims instead of flashing while
-  pending) — this file has no navigation itself. New blocks default to
-  the next full hour from now (`nextHourSlot` in `quick-add-block.tsx`).
+  pending, force-prefetches both neighboring weeks — see Rules) — this
+  file has no navigation itself. New blocks default to the next full hour
+  from now (`nextHourSlot` in `quick-add-block.tsx`).
 - **Date/time pickers** (`wheel-date-picker.tsx`, `circular-time-
   picker.tsx`) both support full keyboard control now: the date wheel's
   ←/→ move focus between day/month/year, ↑/↓ nudge the focused column's
@@ -206,6 +260,20 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   % change and trend direction — most-active-weekday and a completion-
   rate insight were tried and explicitly cut, don't re-add without
   asking.
+- **Settings' "Import .ics"** (`src/components/ics-import-form.tsx`) is a
+  single tag-name input + file input + Import button — no per-source
+  slots, no sync-status/last-synced bookkeeping in the UI at all. Errors
+  from `importIcsAsTag` are caught locally in the component (`try`/`catch`
+  inside the `useTransition` callback) and shown as an inline message
+  rather than left to reject as an unhandled Server Action error — letting
+  that reject unhandled once genuinely crashed the page (dev error
+  overlay) when a leftover `ics_feeds` row from the old design had no
+  usable source configured; don't drop this try/catch when touching the
+  action. `IcsHelpModal` (`src/components/ics-help-modal.tsx`) is static
+  content only, written for a non-technical reader *and* an AI generating
+  the file on the user's behalf — its central point is "list every date as
+  its own event, don't use a repeating rule," since `parseIcs` doesn't
+  expand `RRULE`.
 - **NavShell** (`src/components/nav-shell.tsx`) content width: every
   page shares the same `max-w-5xl px-4 md:px-8` — was split (`max-w-full`
   for `/`, `/calendar`, `/tasks` + `/tasks/archive`; `max-w-3xl` for
@@ -296,13 +364,74 @@ all pages share the same horizontal padding as Stats; light theme
 background is a step darker and body text is heavier; the sidebar no
 longer shifts a few px between tall and short pages
 (`scrollbar-gutter: stable`).
+
+## Mobile review
+
+A separate pass from Page review above — that one is done at desktop
+viewport via `npm run dev`; this one is a real phone. Write notes
+directly under the relevant heading — plain description, no need to
+phrase it as a question. Use a nested `Q:`/`A:` pair for anything that
+needs a decision before it can be fixed. Once a page's notes are
+addressed, this gets wiped back to an empty heading (or a short
+confirmed-status line) for the next pass, same convention as Page
+review. Once fixed, non-obvious findings belong in Architecture Notes/
+Rules above, not repeated here.
+
+### Onboarding
+
+- Perfect
+
+### Login
+
+- Perfect
+
+### Hub
+
+- Calendar is crossing above the bottom-bar but only the part of the hours (side panel of the calendar with the time). 
+
+### Tasks
+
+- Lateral scroll needs to go: make tasks, due date on top of the other.
+
+- If there are a lot of nested tasks, this becomes an infinite scroll, even with tag filter. Make the cards smaller and indent the subtasks from task and subsubtasks from subtasks. Similar to what you do on computer but a smaller indent instead of a whole new column. Cards cand have the content stack more vertically instead of horizontaly. 
+
+- There is no clear way to understand what task is inside which. I mean there is the "under xxx" information but visually this is not enough. Make it clearer. 
+
+
+
+### Calendar
+
+- Same issue in the hub about the calendar times crossing the bottom-menu. 
+
+- Add some more space between the days of the week and the border of the card. That means, make the margin more even across the card.
+
+### Settings
+
+- Perfect
+
+### Stats
+
+- Perfect
+
+### Other
+
+- Bottom-bar (sidebar on computer) should be always visible, sticky.
+
 ## Not yet built
 
-- Automatic/periodic `.ics` sync (currently manual "Sync now") — port
-  `src/lib/actions/ics.ts`'s parse/upsert into a Supabase Edge Function on
-  `pg_cron` (not Vercel Cron — Hobby tier is once/day).
+- Persistent/re-syncable `.ics` feeds — deliberately not how it works now.
+  `.ics` import is a manual one-shot "import as a new tag" action by
+  design (see Rules); a from-scratch feed-tracking model would need
+  reintroducing if this is wanted later (one was built and removed this
+  session — don't just resurrect `ics_feeds` as-is without re-checking it
+  still fits).
 - Google Calendar OAuth (`/api/google-calendar/callback`, token storage in
-  `google_calendar_connections`, wire the two disabled Settings buttons).
+  `google_calendar_connections`, no Settings UI teaser anymore either —
+  removed along with the disabled buttons).
+- Cleanup candidate, not urgent: `ics_feeds` table, `ics-feeds` storage
+  bucket, and `blocks.ics_source`/`ics_uid` columns are unused leftovers
+  from the removed feed-based `.ics` design — fine to drop in a future
+  migration once confirmed nothing needs reviving from them.
 - The deliberate visual-design polish pass (explicitly scoped separate
   from functional work).
 - A "current streak" Stats metric — considered, not built (no natural

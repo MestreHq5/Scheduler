@@ -23,6 +23,22 @@ function StudyToggle({ active, onToggle }: { active: boolean; onToggle: () => vo
   );
 }
 
+function SkipCopyToggle({ active, onToggle }: { active: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      title="Skip this group's tags' blocks when duplicating a week"
+      className={clsx(
+        "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+        active ? "bg-accent-soft text-accent border-accent/40" : "border-border text-text-muted hover:text-text",
+      )}
+    >
+      Skip copy
+    </button>
+  );
+}
+
 export function TagGroupManager({ groups }: { groups: TagGroup[] }) {
   const [adding, setAdding] = useState(false);
 
@@ -84,6 +100,12 @@ function GroupRow({ group }: { group: TagGroup }) {
       <StudyToggle
         active={group.is_study_unit}
         onToggle={() => startTransition(() => updateTagGroup(group.id, { is_study_unit: !group.is_study_unit }))}
+      />
+      <SkipCopyToggle
+        active={group.exclude_from_duplicate}
+        onToggle={() =>
+          startTransition(() => updateTagGroup(group.id, { exclude_from_duplicate: !group.exclude_from_duplicate }))
+        }
       />
       <button
         disabled={pending}

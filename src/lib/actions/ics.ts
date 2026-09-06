@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { parseIcs } from "@/lib/ics";
-import type { IcsSource } from "@/lib/database.types";
+import { deriveBlockTitle, randomTagColor } from "@/lib/tags";
+import { instantToLocalParts } from "@/lib/dates";
 
 async function currentUserId() {
   const supabase = await createClient();
@@ -14,117 +15,58 @@ async function currentUserId() {
   return { supabase, userId: user.id };
 }
 
-export async function saveIcsFeedLabel(source: IcsSource, label: string) {
-  const { supabase, userId } = await currentUserId();
-  const trimmed = label.trim() || null;
-
-  const { data: existing, error: fetchError } = await supabase
-    .from("ics_feeds")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("source", source)
-    .maybeSingle();
-  if (fetchError) throw fetchError;
-
-  const { error } = existing
-    ? await supabase.from("ics_feeds").update({ label: trimmed }).eq("id", existing.id)
-    : await supabase.from("ics_feeds").insert({ user_id: userId, source, label: trimmed, kind: "url" });
-  if (error) throw error;
-
-  revalidatePath("/settings");
-}
-
-export async function saveIcsFeedUrl(source: IcsSource, url: string) {
-  const { supabase, userId } = await currentUserId();
-  const { error } = await supabase
-    .from("ics_feeds")
-    .upsert({ user_id: userId, source, kind: "url", url, storage_path: null }, { onConflict: "user_id,source" });
-  if (error) throw error;
-  revalidatePath("/settings");
-}
-
-export async function uploadIcsFile(source: IcsSource, file: File) {
-  const { supabase, userId } = await currentUserId();
-  const path = `${userId}/${source}.ics`;
-
-  const { error: uploadError } = await supabase.storage
-    .from("ics-feeds")
-    .upload(path, file, { upsert: true, contentType: "text/calendar" });
-  if (uploadError) throw uploadError;
-
-  const { error } = await supabase
-    .from("ics_feeds")
-    .upsert({ user_id: userId, source, kind: "file", storage_path: path, url: null }, { onConflict: "user_id,source" });
-  if (error) throw error;
-
-  revalidatePath("/settings");
-}
-
 /**
- * Manual sync for now — fetches (URL) or reads (uploaded file) the feed,
- * parses it, and upserts into imported_events keyed on raw_uid so re-syncs
- * just update existing rows. The periodic/automatic version of this belongs
- * in a Supabase Edge Function on pg_cron (see README) once deployed.
+ * One-shot .ics import — not a persistent feed, nothing to re-sync. Creates
+ * a brand-new tag named `tagLabel` and adds every event in the file as a
+ * block under that tag (same color/title, like any tag-derived block).
+ * LOCATION is parsed but intentionally not stored (blocks has no location
+ * field); the event's SUMMARY becomes the block's `details` text instead,
+ * truncated to 30 characters — block `title` stays tag-derived, never typed.
+ * Importing again (same file or a different one) just makes another tag.
  */
-export async function syncIcsFeed(source: IcsSource) {
+export async function importIcsAsTag(tagLabel: string, file: File) {
   const { supabase, userId } = await currentUserId();
 
-  const { data: feed, error: feedError } = await supabase
-    .from("ics_feeds")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("source", source)
+  const label = tagLabel.trim();
+  if (!label) throw new Error("Tag name is required.");
+
+  const text = await file.text();
+  const events = parseIcs(text);
+
+  const { data: tag, error: tagError } = await supabase
+    .from("tags")
+    .insert({ user_id: userId, label, color: randomTagColor() })
+    .select("id")
     .single();
-  if (feedError) throw feedError;
+  if (tagError) throw tagError;
 
-  try {
-    let text: string;
-    if (feed.kind === "url") {
-      if (!feed.url) throw new Error("No URL configured");
-      const res = await fetch(feed.url);
-      if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
-      text = await res.text();
-    } else {
-      if (!feed.storage_path) throw new Error("No file uploaded");
-      const { data, error } = await supabase.storage.from("ics-feeds").download(feed.storage_path);
-      if (error) throw error;
-      text = await data.text();
-    }
+  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", userId).single();
+  const timezone = profile?.timezone ?? "Europe/Lisbon";
 
-    const events = parseIcs(text);
-    const rows = events.map((e) => ({
+  const title = deriveBlockTitle({ label, kind: null, group: null });
+
+  const rows = events.map((e) => {
+    const start = instantToLocalParts(e.startsAt, timezone);
+    const end = instantToLocalParts(e.endsAt, timezone);
+    return {
       user_id: userId,
-      source,
-      title: e.title,
-      starts_at: e.startsAt,
-      ends_at: e.endsAt,
-      location: e.location,
-      raw_uid: e.uid,
-      last_synced_at: new Date().toISOString(),
-    }));
+      tag_id: tag.id,
+      title,
+      date: start.date,
+      start_time: start.time,
+      end_time: end.time,
+      details: e.title.slice(0, 30),
+    };
+  });
 
-    if (rows.length > 0) {
-      const { error: upsertError } = await supabase
-        .from("imported_events")
-        .upsert(rows, { onConflict: "user_id,source,raw_uid" });
-      if (upsertError) throw upsertError;
-    }
-
-    await supabase
-      .from("ics_feeds")
-      .update({ last_synced_at: new Date().toISOString(), last_sync_status: "ok", last_sync_error: null })
-      .eq("id", feed.id);
-  } catch (err) {
-    await supabase
-      .from("ics_feeds")
-      .update({
-        last_sync_status: "error",
-        last_sync_error: err instanceof Error ? err.message : String(err),
-      })
-      .eq("id", feed.id);
-    throw err;
+  if (rows.length > 0) {
+    const { error: insertError } = await supabase.from("blocks").insert(rows);
+    if (insertError) throw insertError;
   }
 
   revalidatePath("/settings");
   revalidatePath("/calendar");
+  revalidatePath("/");
+
+  return { count: rows.length, label };
 }

@@ -23,7 +23,7 @@ export default async function StatsPage() {
   const windowStart = addMonths(today, -12);
 
   const [{ data: tags }, { data: blocks }, { data: tasks }] = await Promise.all([
-    supabase.from("tags").select("*").eq("archived", false).order("sort_order"),
+    supabase.from("tags").select("*").eq("archived", false).order("sort_order").order("created_at"),
     supabase
       .from("blocks")
       .select("tag_id, date, start_time, end_time")

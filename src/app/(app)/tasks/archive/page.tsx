@@ -15,7 +15,7 @@ export default async function TasksArchivePage({
   const supabase = await createClient();
 
   const [{ data: tags }, { data: doneTasks }] = await Promise.all([
-    supabase.from("tags").select("*").eq("archived", false).order("sort_order"),
+    supabase.from("tags").select("*").eq("archived", false).order("sort_order").order("created_at"),
     supabase
       .from("tasks")
       .select("*")

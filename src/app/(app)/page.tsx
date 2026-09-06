@@ -29,7 +29,7 @@ export default async function HubPage() {
   const today = todayInTimezone(timezone);
 
   const [{ data: tags }, { data: todayBlocks }, { data: deadlineTasks }, { data: trackedBlocks }] = await Promise.all([
-    supabase.from("tags").select("*").eq("archived", false).order("sort_order"),
+    supabase.from("tags").select("*").eq("archived", false).order("sort_order").order("created_at"),
     supabase
       .from("blocks")
       .select("*, tag:tags(label,color,counts_as_work)")

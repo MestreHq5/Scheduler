@@ -106,14 +106,34 @@ export async function duplicateWeek(sourceMonday: string, targetMonday: string) 
 
   const { data: sourceBlocks, error: fetchError } = await supabase
     .from("blocks")
-    .select("tag_id, title, date, start_time, end_time, details")
+    .select(
+      "tag_id, title, date, start_time, end_time, details, tag:tags(exclude_from_duplicate, group:tag_groups(exclude_from_duplicate))",
+    )
     .eq("user_id", userId)
     .gte("date", sourceMonday)
     .lte("date", weekEnd);
   if (fetchError) throw fetchError;
   if (!sourceBlocks?.length) return;
 
-  const copies = sourceBlocks.map((b) => ({
+  type SourceBlock = {
+    tag_id: string | null;
+    title: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    details: string | null;
+    tag: { exclude_from_duplicate: boolean; group: { exclude_from_duplicate: boolean } | null } | null;
+  };
+
+  const included = (sourceBlocks as unknown as SourceBlock[]).filter((b) => {
+    if (!b.tag) return true;
+    if (b.tag.exclude_from_duplicate) return false;
+    if (b.tag.group?.exclude_from_duplicate) return false;
+    return true;
+  });
+  if (!included.length) return;
+
+  const copies = included.map((b) => ({
     user_id: userId,
     tag_id: b.tag_id,
     title: b.title,

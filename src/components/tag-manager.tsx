@@ -100,6 +100,19 @@ function TagRow({ tag, groups }: { tag: Tag; groups: TagGroup[] }) {
         Work
       </button>
       <button
+        type="button"
+        onClick={() => startTransition(() => updateTag(tag.id, { exclude_from_duplicate: !tag.exclude_from_duplicate }))}
+        title="Skip this tag's blocks when duplicating a week"
+        className={clsx(
+          "rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors",
+          tag.exclude_from_duplicate
+            ? "bg-accent-soft text-accent border-accent/40"
+            : "border-border text-text-muted hover:text-text",
+        )}
+      >
+        Skip copy
+      </button>
+      <button
         disabled={pending}
         onClick={() => startTransition(() => setTagArchived(tag.id, !tag.archived))}
         className={clsx("text-xs", tag.archived ? "text-accent" : "text-text-muted hover:text-text")}

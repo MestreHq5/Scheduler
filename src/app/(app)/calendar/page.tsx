@@ -32,7 +32,7 @@ export default async function CalendarPage({
   const weekEnd = dates[6]!;
 
   const [{ data: tags }, { data: blocks }] = await Promise.all([
-    supabase.from("tags").select("*").eq("archived", false).order("sort_order"),
+    supabase.from("tags").select("*").eq("archived", false).order("sort_order").order("created_at"),
     supabase
       .from("blocks")
       .select("*, tag:tags(label,color)")
