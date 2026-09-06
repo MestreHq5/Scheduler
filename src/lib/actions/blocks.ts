@@ -26,7 +26,7 @@ async function fetchTagForTitle(supabase: Awaited<ReturnType<typeof createClient
   return data as unknown as { label: string; kind: TagKind | null; group: { is_study_unit: boolean } | null };
 }
 
-const DETAILS_MAX_CHARS = 200;
+const DETAILS_MAX_CHARS = 30;
 const LOCATION_MAX_CHARS = 60;
 
 export async function createBlock(input: {
@@ -72,6 +72,7 @@ export async function updateBlock(
     end_time: string;
     details: string | null;
     location: string | null;
+    notes: string | null;
   }>,
 ) {
   const { supabase } = await currentUserId();
@@ -114,7 +115,7 @@ export async function duplicateWeek(sourceMonday: string, targetMonday: string) 
   const { data: sourceBlocks, error: fetchError } = await supabase
     .from("blocks")
     .select(
-      "tag_id, title, date, start_time, end_time, details, location, tag:tags(exclude_from_duplicate, group:tag_groups(exclude_from_duplicate))",
+      "tag_id, title, date, start_time, end_time, details, location, notes, tag:tags(exclude_from_duplicate, group:tag_groups(exclude_from_duplicate))",
     )
     .eq("user_id", userId)
     .gte("date", sourceMonday)
@@ -130,6 +131,7 @@ export async function duplicateWeek(sourceMonday: string, targetMonday: string) 
     end_time: string;
     details: string | null;
     location: string | null;
+    notes: string | null;
     tag: { exclude_from_duplicate: boolean; group: { exclude_from_duplicate: boolean } | null } | null;
   };
 
@@ -150,6 +152,7 @@ export async function duplicateWeek(sourceMonday: string, targetMonday: string) 
     end_time: b.end_time,
     details: b.details,
     location: b.location,
+    notes: b.notes,
   }));
 
   const { error: insertError } = await supabase.from("blocks").insert(copies);

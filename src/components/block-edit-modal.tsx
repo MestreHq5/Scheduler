@@ -24,6 +24,7 @@ export function BlockEditModal({
   const [end, setEnd] = useState(block.end_time.slice(0, 5));
   const [details, setDetails] = useState(block.details ?? "");
   const [location, setLocation] = useState(block.location ?? "");
+  const [notes, setNotes] = useState(block.notes ?? "");
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -45,6 +46,7 @@ export function BlockEditModal({
         end_time: end,
         details: details.trim() ? details.trim() : null,
         location: location.trim() ? location.trim() : null,
+        notes: notes.trim() ? notes.trim() : null,
       });
       onClose();
     });
@@ -134,15 +136,24 @@ export function BlockEditModal({
           </div>
 
           <div>
-            <textarea
+            <input
               value={details}
               onChange={(e) => setDetails(e.target.value)}
-              maxLength={200}
-              rows={2}
+              maxLength={30}
               placeholder="Details (optional)"
+              className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+            <p className="text-[11px] text-text-muted mt-1 text-right">{details.length}/30</p>
+          </div>
+
+          <div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              placeholder="Notes (optional) — not shown on the calendar, only here"
               className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2 text-sm outline-none focus:border-accent resize-none"
             />
-            <p className="text-[11px] text-text-muted mt-1 text-right">{details.length}/200</p>
           </div>
 
           {start >= end && <p className="text-xs text-danger">End time must be after start time.</p>}

@@ -103,7 +103,7 @@ export function QuickAddBlock({ tags, defaultDate, timezone }: { tags: Tag[]; de
         <input
           value={details}
           onChange={(e) => setDetails(e.target.value)}
-          maxLength={200}
+          maxLength={30}
           placeholder="Details (optional)"
           className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent w-36"
         />

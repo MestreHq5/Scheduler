@@ -133,8 +133,10 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
 - **`tasks`**: `{ id, title, tag_id, done (derived), due_date, notes,
   parent_id, depth (0–2), completed_at, created_at }`.
 - **`blocks`**: `{ id, tag_id, title (auto-derived), date, start_time,
-  end_time, details (≤200 chars), location (≤60 chars,
-  `0009_block_location.sql`), ics_source/ics_uid (nullable, vestigial),
+  end_time, details (≤30 chars — short label, shown on the calendar
+  card), location (≤60 chars, `0009_block_location.sql`), notes
+  (unrestricted, `0010_block_notes.sql` — long-form, edit-modal only,
+  never shown on the card), ics_source/ics_uid (nullable, vestigial),
   created_at }`. `tag_id` may be null (tag deleted, or a tagless block
   created via calendar double-click) — `title` then just reads "Block".
 - **`ics_feeds`**, **`imported_events`**: vestigial, unused by any
@@ -172,12 +174,15 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   arbitrary-length `weekDates` array (lets the Hub reuse it as a single-
   day view, including on the Hub). `hourHeight` is runtime-measured
   (`ResizeObserver` ÷ 12 visible hours). Block cards are always exactly
-  two lines, both CSS-truncated (never wrapped, never a third line): line
-  one is the tag's group label (just the tag label if it has no group;
-  falls back to the block's stored `title` when tagless) plus `· details`
-  if `details` is set; line two is `location · time` if `location` is
-  set, else just the time range. The untruncated `details`/`location`
-  text is only ever fully visible in `BlockEditModal`. The weekday header
+  two lines, both CSS-truncated as a width-overflow safety net (never
+  wrapped, never a third line): line one is the tag's group label (just
+  the tag label if it has no group; falls back to the block's stored
+  `title` when tagless) plus `· details` if the short `details` field is
+  set; line two is `location · time` if `location` is set, else just the
+  time range. `notes` (the long-form field) is never shown on the card at
+  all — it only appears in `BlockEditModal`, which is also the only place
+  it can be edited (unlike `details`/`location`, it's not in
+  `QuickAddBlock`). The weekday header
   is its **own sticky wrapper, not a grid row inside the scrolling
   grid** — CSS Grid computes a sticky item's containing block as its own
   (short) row track, so a header cell that's just one row of a tall grid

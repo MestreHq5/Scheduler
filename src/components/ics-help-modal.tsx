@@ -76,10 +76,27 @@ export function IcsHelpModal() {
               </div>
 
               <div>
-                <p className="font-medium text-text mb-1">Naming</p>
-                <p>
-                  Keep each event&apos;s title short — it becomes a small label under the tag you name during
-                  import. A <code>LOCATION</code> field is also read in and shown next to the block&apos;s time.
+                <p className="font-medium text-text mb-1">Fields this app reads</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  <li>
+                    <code>UID</code> — required, only used to tell events apart while importing; not kept
+                    afterward.
+                  </li>
+                  <li>
+                    <code>DTSTART</code> / <code>DTEND</code> — become the block&apos;s date and start/end time.
+                  </li>
+                  <li>
+                    <code>SUMMARY</code> — becomes the block&apos;s short label shown on the calendar card. Keep it
+                    to about 30 characters; anything longer is cut off.
+                  </li>
+                  <li>
+                    <code>LOCATION</code> — shown on the card next to the time. Optional.
+                  </li>
+                </ul>
+                <p className="mt-1">
+                  Nothing else is read — <code>DESCRIPTION</code>, <code>CATEGORIES</code>, and any other field are
+                  ignored. There&apos;s no way to import a longer note per event; add one afterward from the
+                  calendar&apos;s edit popup if you need it.
                 </p>
               </div>
 
@@ -103,6 +120,7 @@ UID:ae101-2026-01-15@example.com
 DTSTART:20260115T090000Z
 DTEND:20260115T103000Z
 SUMMARY:AE101 Lecture
+LOCATION:Room 204
 END:VEVENT
 END:VCALENDAR`}
                 </pre>
