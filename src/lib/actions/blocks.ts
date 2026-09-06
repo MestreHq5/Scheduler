@@ -26,21 +26,26 @@ async function fetchTagForTitle(supabase: Awaited<ReturnType<typeof createClient
   return data as unknown as { label: string; kind: TagKind | null; group: { is_study_unit: boolean } | null };
 }
 
+const DETAILS_MAX_CHARS = 200;
+const LOCATION_MAX_CHARS = 60;
+
 export async function createBlock(input: {
-  tag_id: string;
+  tag_id: string | null;
   date: string;
   start_time: string;
   end_time: string;
   details?: string | null;
+  location?: string | null;
 }) {
   const { supabase, userId } = await currentUserId();
 
-  const tag = await fetchTagForTitle(supabase, input.tag_id);
+  const title = input.tag_id ? deriveBlockTitle(await fetchTagForTitle(supabase, input.tag_id)) : "Block";
 
   const { error } = await supabase.from("blocks").insert({
     ...input,
-    details: input.details ? input.details.slice(0, 30) : input.details,
-    title: deriveBlockTitle(tag),
+    details: input.details ? input.details.slice(0, DETAILS_MAX_CHARS) : input.details,
+    location: input.location ? input.location.slice(0, LOCATION_MAX_CHARS) : input.location,
+    title,
     user_id: userId,
   });
   if (error) throw error;
@@ -61,17 +66,19 @@ export async function moveBlock(id: string, input: { date: string; start_time: s
 export async function updateBlock(
   id: string,
   input: Partial<{
-    tag_id: string;
+    tag_id: string | null;
     date: string;
     start_time: string;
     end_time: string;
     details: string | null;
+    location: string | null;
   }>,
 ) {
   const { supabase } = await currentUserId();
 
   const patch: Partial<Block> = { ...input };
-  if (input.details) patch.details = input.details.slice(0, 30);
+  if (input.details) patch.details = input.details.slice(0, DETAILS_MAX_CHARS);
+  if (input.location) patch.location = input.location.slice(0, LOCATION_MAX_CHARS);
 
   if (input.tag_id) {
     const tag = await fetchTagForTitle(supabase, input.tag_id);
@@ -107,7 +114,7 @@ export async function duplicateWeek(sourceMonday: string, targetMonday: string) 
   const { data: sourceBlocks, error: fetchError } = await supabase
     .from("blocks")
     .select(
-      "tag_id, title, date, start_time, end_time, details, tag:tags(exclude_from_duplicate, group:tag_groups(exclude_from_duplicate))",
+      "tag_id, title, date, start_time, end_time, details, location, tag:tags(exclude_from_duplicate, group:tag_groups(exclude_from_duplicate))",
     )
     .eq("user_id", userId)
     .gte("date", sourceMonday)
@@ -122,6 +129,7 @@ export async function duplicateWeek(sourceMonday: string, targetMonday: string) 
     start_time: string;
     end_time: string;
     details: string | null;
+    location: string | null;
     tag: { exclude_from_duplicate: boolean; group: { exclude_from_duplicate: boolean } | null } | null;
   };
 
@@ -141,6 +149,7 @@ export async function duplicateWeek(sourceMonday: string, targetMonday: string) 
     start_time: b.start_time,
     end_time: b.end_time,
     details: b.details,
+    location: b.location,
   }));
 
   const { error: insertError } = await supabase.from("blocks").insert(copies);

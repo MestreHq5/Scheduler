@@ -105,6 +105,7 @@ export interface Database {
           start_time: string;
           end_time: string;
           details: string | null;
+          location: string | null;
           ics_source: IcsSource | null;
           ics_uid: string | null;
           archived: boolean;

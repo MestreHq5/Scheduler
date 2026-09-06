@@ -72,42 +72,29 @@ export function IcsHelpModal() {
                     Times written in UTC, ending in &quot;Z&quot; (e.g. <code>20260115T090000Z</code> for 9am UTC) —
                     this avoids the file being read in the wrong timezone.
                   </li>
-                  <li>
-                    A <code>CATEGORIES</code> value — this is the tag it gets imported under (see below).
-                  </li>
                 </ul>
               </div>
 
               <div>
                 <p className="font-medium text-text mb-1">Naming</p>
                 <p>
-                  Keep each event&apos;s title short (around 30 characters) — it becomes a small label under its
-                  tag. A location field is fine to include but won&apos;t be used.
-                </p>
-              </div>
-
-              <div>
-                <p className="font-medium text-text mb-1">Tagging — CATEGORIES</p>
-                <p>
-                  Every event needs a <code>CATEGORIES</code> line, e.g. <code>CATEGORIES:AE101</code>. Import reads
-                  it as that event&apos;s tag name — a brand-new tag is created for each distinct value found in the
-                  file, each with its own color, so a single import can populate several differently-tagged
-                  calendars at once (e.g. one tag per course). Events don&apos;t need to share a tag; give each one
-                  whatever <code>CATEGORIES</code> value fits.
+                  Keep each event&apos;s title short — it becomes a small label under the tag you name during
+                  import. A <code>LOCATION</code> field is also read in and shown next to the block&apos;s time.
                 </p>
               </div>
 
               <div>
                 <p className="font-medium text-text mb-1">How import uses it</p>
                 <p>
-                  Every event becomes a block under the tag named in its <code>CATEGORIES</code> value. You can
-                  recolor or retag individual blocks afterward from the calendar. Importing again (same file or a
-                  different one) is always safe — it just creates more tags.
+                  Every event in the file becomes a block, all under the one tag name you type in the import form —
+                  so they all share a color. You can recolor or retag individual blocks afterward from the calendar.
+                  Importing again (same file or a different one) is always safe — it just adds more blocks under
+                  whatever new tag name you give it.
                 </p>
               </div>
 
               <div>
-                <p className="font-medium text-text mb-1">Minimal example (two tags in one file)</p>
+                <p className="font-medium text-text mb-1">Minimal example (one event)</p>
                 <pre className="rounded-lg bg-surface-2 border border-border p-2 overflow-x-auto text-[11px] leading-relaxed">
 {`BEGIN:VCALENDAR
 VERSION:2.0
@@ -116,14 +103,6 @@ UID:ae101-2026-01-15@example.com
 DTSTART:20260115T090000Z
 DTEND:20260115T103000Z
 SUMMARY:AE101 Lecture
-CATEGORIES:AE101
-END:VEVENT
-BEGIN:VEVENT
-UID:ae205-2026-01-15@example.com
-DTSTART:20260115T140000Z
-DTEND:20260115T153000Z
-SUMMARY:AE205 Lab
-CATEGORIES:AE205
 END:VEVENT
 END:VCALENDAR`}
                 </pre>

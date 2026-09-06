@@ -23,6 +23,7 @@ export function BlockEditModal({
   const [start, setStart] = useState(block.start_time.slice(0, 5));
   const [end, setEnd] = useState(block.end_time.slice(0, 5));
   const [details, setDetails] = useState(block.details ?? "");
+  const [location, setLocation] = useState(block.location ?? "");
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export function BlockEditModal({
         start_time: start,
         end_time: end,
         details: details.trim() ? details.trim() : null,
+        location: location.trim() ? location.trim() : null,
       });
       onClose();
     });
@@ -123,13 +125,24 @@ export function BlockEditModal({
 
           <div>
             <input
-              value={details}
-              onChange={(e) => setDetails(e.target.value)}
-              maxLength={30}
-              placeholder="Details (optional)"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              maxLength={60}
+              placeholder="Location (optional)"
               className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2 text-sm outline-none focus:border-accent"
             />
-            <p className="text-[11px] text-text-muted mt-1 text-right">{details.length}/30</p>
+          </div>
+
+          <div>
+            <textarea
+              value={details}
+              onChange={(e) => setDetails(e.target.value)}
+              maxLength={200}
+              rows={2}
+              placeholder="Details (optional)"
+              className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2 text-sm outline-none focus:border-accent resize-none"
+            />
+            <p className="text-[11px] text-text-muted mt-1 text-right">{details.length}/200</p>
           </div>
 
           {start >= end && <p className="text-xs text-danger">End time must be after start time.</p>}

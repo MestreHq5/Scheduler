@@ -48,13 +48,10 @@ day-to-day, desktop for weekly (Sunday) planning.
   Calendar import (real UTC instants, frozen on timezone change) —
   nothing writes to it today.
 - **`.ics` import is a one-shot action, not a persistent feed**
-  (`importIcsAsTags`, `src/lib/actions/ics.ts`): pick a file, no tag name
-  typed in the form — each event's `CATEGORIES` value *is* its tag name.
-  A brand-new tag is created per distinct `CATEGORIES` value found in the
-  file (own random color), so one import can populate several
-  differently-tagged calendars at once; `parseIcs` throws if any event is
-  missing `CATEGORIES`. No stored feed, no re-sync — import again any
-  time, it just creates more tags. Converts UTC `DTSTART`/`DTEND` to
+  (`importIcsAsTag`, `src/lib/actions/ics.ts`): pick a file, type a tag
+  name, every event becomes a `blocks` row under a freshly-created tag
+  (one shared color/title). No stored feed, no re-sync — import again
+  under a new tag name any time. Converts UTC `DTSTART`/`DTEND` to
   wall-clock via `instantToLocalParts` using the profile's timezone *at
   import time*, then it's fixed forever like any block. `parseIcs`
   (`src/lib/ics.ts`) doesn't expand `RRULE` — the Settings Help modal
@@ -136,8 +133,10 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
 - **`tasks`**: `{ id, title, tag_id, done (derived), due_date, notes,
   parent_id, depth (0–2), completed_at, created_at }`.
 - **`blocks`**: `{ id, tag_id, title (auto-derived), date, start_time,
-  end_time, details (≤30 chars), ics_source/ics_uid (nullable,
-  vestigial), created_at }`.
+  end_time, details (≤200 chars), location (≤60 chars,
+  `0009_block_location.sql`), ics_source/ics_uid (nullable, vestigial),
+  created_at }`. `tag_id` may be null (tag deleted, or a tagless block
+  created via calendar double-click) — `title` then just reads "Block".
 - **`ics_feeds`**, **`imported_events`**: vestigial, unused by any
   current code path (see Rules' `.ics` import bullet).
 - **`google_calendar_connections`**: not wired up yet.
@@ -172,20 +171,33 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
 - **Calendar week view** (`src/components/week-calendar.tsx`) takes an
   arbitrary-length `weekDates` array (lets the Hub reuse it as a single-
   day view, including on the Hub). `hourHeight` is runtime-measured
-  (`ResizeObserver` ÷ 12 visible hours). Block cards show the tag's
-  `group · tag` (just `tag` if it has no group; falls back to the block's
-  stored `title` when tagless) as line one, `details` as line two, then
-  the time range on its own line three — except `details` at or under
-  `DETAILS_INLINE_MAX_CHARS` (14) shares line two with the time instead,
-  to save vertical space on short blocks. Drag-to-move and edge-resize are both optimistic
-  inside the same transition as the server call. A stationary
-  pointerdown/up (under `CLICK_THRESHOLD_PX`) opens `BlockEditModal`
-  instead of firing a no-op move. The now-line uses the profile's
-  timezone, not the browser's. `WeekNav` is a separate client component
-  (see Rules' prefetch bullet). The scroll container has an even `p-2`
-  padding — safe because `position: sticky` offsets resolve against the
-  *padding* edge of the scrolling ancestor, so it reads as a permanent
-  margin rather than a scrolling gap.
+  (`ResizeObserver` ÷ 12 visible hours). Block cards are always exactly
+  two lines, both CSS-truncated (never wrapped, never a third line): line
+  one is the tag's group label (just the tag label if it has no group;
+  falls back to the block's stored `title` when tagless) plus `· details`
+  if `details` is set; line two is `location · time` if `location` is
+  set, else just the time range. The untruncated `details`/`location`
+  text is only ever fully visible in `BlockEditModal`. The weekday header
+  is its **own sticky wrapper, not a grid row inside the scrolling
+  grid** — CSS Grid computes a sticky item's containing block as its own
+  (short) row track, so a header cell that's just one row of a tall grid
+  runs out of room to stay stuck and detaches after a small amount of
+  scroll; splitting the header into a sibling `sticky top-0` block
+  (matching `gridTemplateColumns` so columns still align) gives it the
+  whole scrollable height as its containing block instead. Don't merge
+  the header back into the same grid as the day columns. Double-clicking
+  empty space in a day column (guarded by `e.target === e.currentTarget`
+  so it never fires on top of a block) calls `createBlock` with
+  `tag_id: null` for the clicked hour, rounded down (23:00 clamps its end
+  to 23:59 since `time` has no 24:00). Drag-to-move and edge-resize are
+  both optimistic inside the same transition as the server call. A
+  stationary pointerdown/up (under `CLICK_THRESHOLD_PX`) opens
+  `BlockEditModal` instead of firing a no-op move. The now-line uses the
+  profile's timezone, not the browser's. `WeekNav` is a separate client
+  component (see Rules' prefetch bullet). The scroll container has an
+  even `p-2` padding — safe because `position: sticky` offsets resolve
+  against the *padding* edge of the scrolling ancestor, so it reads as a
+  permanent margin rather than a scrolling gap.
 - **Date/time pickers** (`wheel-date-picker.tsx`, `circular-time-
   picker.tsx`): full keyboard control (arrows move/nudge, Enter
   commits). The time dial is a 24h face with outer (1–12) and inner
@@ -200,15 +212,13 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   series color is each tag's own color. Insight card only shows period-
   over-period % change/trend — most-active-weekday and a completion-rate
   insight were tried and cut, don't re-add without asking.
-- **Settings' "Import .ics"** (`ics-import-form.tsx`): file input + Import
-  button only, no tag-name input, no sync/status bookkeeping in the UI —
-  tags come from each event's `CATEGORIES` value. Errors from
-  `importIcsAsTags` are caught locally (`try`/`catch` inside the
-  `useTransition` callback) and shown inline — letting that reject
+- **Settings' "Import .ics"** (`ics-import-form.tsx`): tag-name input +
+  file input + Import button, no sync/status bookkeeping in the UI.
+  Errors from `importIcsAsTag` are caught locally (`try`/`catch` inside
+  the `useTransition` callback) and shown inline — letting that reject
   unhandled once crashed the page; don't drop this try/catch.
   `IcsHelpModal` is static content for a non-technical reader *and* an
-  AI generating the file — central points: one event per date (no
-  RRULE), and every event needs a `CATEGORIES` value.
+  AI generating the file — central point: one event per date, no RRULE.
 - **NavShell** (`src/components/nav-shell.tsx`): every page shares
   `max-w-5xl px-4 md:px-8`. Sidebar nav rows and the bottom email/theme/
   log-out group are centered as **shrink-to-fit groups** (no `w-full` on

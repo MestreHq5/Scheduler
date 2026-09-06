@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { clsx } from "clsx";
 import type { Block, Tag } from "@/lib/database.types";
-import { deleteBlock, moveBlock } from "@/lib/actions/blocks";
+import { createBlock, deleteBlock, moveBlock } from "@/lib/actions/blocks";
 import { formatDateDMY, nowClockInTimezone } from "@/lib/dates";
 import { contrastText } from "@/lib/color";
 import { BlockEditModal } from "@/components/block-edit-modal";
@@ -13,7 +13,6 @@ const VISIBLE_HOURS = 12; // the viewport always shows this many hours without s
 const DEFAULT_HOUR_HEIGHT = 48;
 const SNAP_MINUTES = 15;
 const CLICK_THRESHOLD_PX = 5; // pointer movement below this is a click, not a drag
-const DETAILS_INLINE_MAX_CHARS = 14; // details this short share the time's row instead of taking their own
 
 type BlockWithTag = Block & { tag: { label: string; color: string; group: { label: string } | null } | null };
 
@@ -244,6 +243,24 @@ export function WeekCalendar({
     });
   }
 
+  /** Double-clicking empty space in a day column adds a tagless block spanning that hour. */
+  function onEmptyDoubleClick(e: React.MouseEvent<HTMLDivElement>, date: string) {
+    if (e.target !== e.currentTarget) return; // ignore double-clicks landing on a block card
+    const rect = e.currentTarget.getBoundingClientRect();
+    const minutesAtPointer = ((e.clientY - rect.top) / hourHeight) * 60;
+    const hour = Math.max(0, Math.min(23, Math.floor(minutesAtPointer / 60)));
+    const startTime = `${String(hour).padStart(2, "0")}:00`;
+    const endTime = hour === 23 ? "23:59" : `${String(hour + 1).padStart(2, "0")}:00`;
+
+    startTransition(async () => {
+      try {
+        await createBlock({ tag_id: null, date, start_time: startTime, end_time: endTime });
+      } catch (err) {
+        setError(`Couldn't add block — ${err instanceof Error ? err.message : "something went wrong"}.`);
+      }
+    });
+  }
+
   function onPointerUpOrCancel() {
     if (resize) {
       endResize();
@@ -307,27 +324,29 @@ export function WeekCalendar({
         onPointerCancel={onPointerUpOrCancel}
       >
       <div
-        className="grid select-none"
+        className="sticky top-0 z-20 grid bg-bg"
         style={{ gridTemplateColumns: `2.75rem repeat(${weekDates.length}, minmax(0, 1fr))` }}
       >
-        <div className="sticky top-0 left-0 z-20 bg-bg" />
+        <div />
         {weekDates.map((date) => {
           const isToday = date === today;
           const weekday = WEEKDAY_LABELS[new Date(`${date}T00:00:00Z`).getUTCDay()];
           return (
             <div
               key={date}
-              className={clsx(
-                "sticky top-0 z-10 bg-bg text-center pb-2 pt-1 border-b border-border",
-                isToday && "text-accent",
-              )}
+              className={clsx("text-center pb-2 pt-1 border-b border-border", isToday && "text-accent")}
             >
               <p className="text-xs font-medium">{weekday}</p>
               <p className="text-[11px] text-text-muted">{formatDateDMY(date)}</p>
             </div>
           );
         })}
+      </div>
 
+      <div
+        className="grid select-none"
+        style={{ gridTemplateColumns: `2.75rem repeat(${weekDates.length}, minmax(0, 1fr))` }}
+      >
         <div className="sticky left-0 z-10 bg-bg" style={{ height: dayHeight }}>
           {Array.from({ length: 24 }, (_, h) => (
             <div
@@ -354,6 +373,7 @@ export function WeekCalendar({
                 height: dayHeight,
                 backgroundImage: `repeating-linear-gradient(to bottom, var(--color-border) 0, var(--color-border) 1px, transparent 1px, transparent ${hourHeight}px)`,
               }}
+              onDoubleClick={(e) => onEmptyDoubleClick(e, date)}
             >
               {dayBlocks.map((b) => {
                 const { col, count } = layout.get(b.id) ?? { col: 0, count: 1 };
@@ -428,11 +448,10 @@ function BlockCard({
   const textColor = contrastText(color);
 
   const tagLabel = block.tag?.label ?? block.title;
-  const groupLabel = block.tag?.group?.label;
-  const headerLabel = groupLabel ? `${groupLabel} · ${tagLabel}` : tagLabel;
+  const groupOrTag = block.tag?.group?.label ?? tagLabel;
+  const headerLabel = block.details ? `${groupOrTag} · ${block.details}` : groupOrTag;
   const timeLabel = `${block.start_time.slice(0, 5)}–${block.end_time.slice(0, 5)}`;
-  const details = block.details;
-  const detailsInline = !!details && details.length <= DETAILS_INLINE_MAX_CHARS;
+  const secondLine = block.location ? `${block.location} · ${timeLabel}` : timeLabel;
 
   return (
     <div
@@ -467,12 +486,9 @@ function BlockCard({
           ×
         </button>
       </div>
-      {details && !detailsInline && (
-        <span className="block truncate" style={{ opacity: 0.75 }}>
-          {details}
-        </span>
-      )}
-      <span style={{ opacity: 0.85 }}>{detailsInline ? `${details} · ${timeLabel}` : timeLabel}</span>
+      <span className="block truncate" style={{ opacity: 0.85 }}>
+        {secondLine}
+      </span>
       <div
         onPointerDown={(e) => onResizeStart(e, "end")}
         className="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize touch-none"

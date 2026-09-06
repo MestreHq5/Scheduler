@@ -16,46 +16,46 @@ async function currentUserId() {
 }
 
 /**
- * One-shot .ics import — not a persistent feed, nothing to re-sync. Each
- * event's CATEGORIES value names the tag it's imported under; a brand-new
- * tag is created per distinct category found in the file (own random
- * color), so one file can populate several differently-tagged/colored sets
- * of blocks at once. LOCATION is parsed but intentionally not stored
- * (blocks has no location field); the event's SUMMARY becomes the block's
- * `details` text instead, truncated to 30 characters — block `title` stays
- * tag-derived, never typed. Importing again (same file or a different one)
- * just makes more tags.
+ * One-shot .ics import — not a persistent feed, nothing to re-sync. Creates
+ * a brand-new tag named `tagLabel` and adds every event in the file as a
+ * block under that tag (same color/title, like any tag-derived block).
+ * The event's SUMMARY becomes the block's `details` text and LOCATION
+ * becomes `location` — block `title` stays tag-derived, never typed.
+ * Importing again (same file or a different one) just makes another tag.
  */
-export async function importIcsAsTags(file: File) {
+export async function importIcsAsTag(tagLabel: string, file: File) {
   const { supabase, userId } = await currentUserId();
+
+  const label = tagLabel.trim();
+  if (!label) throw new Error("Tag name is required.");
 
   const text = await file.text();
   const events = parseIcs(text);
 
-  const tagLabels = [...new Set(events.map((e) => e.tagLabel))];
-
-  const { data: newTags, error: tagError } = await supabase
+  const { data: tag, error: tagError } = await supabase
     .from("tags")
-    .insert(tagLabels.map((label) => ({ user_id: userId, label, color: randomTagColor() })))
-    .select("id, label");
+    .insert({ user_id: userId, label, color: randomTagColor() })
+    .select("id")
+    .single();
   if (tagError) throw tagError;
-
-  const tagIdByLabel = new Map(newTags.map((t) => [t.label, t.id]));
 
   const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", userId).single();
   const timezone = profile?.timezone ?? "Europe/Lisbon";
+
+  const title = deriveBlockTitle({ label, kind: null, group: null });
 
   const rows = events.map((e) => {
     const start = instantToLocalParts(e.startsAt, timezone);
     const end = instantToLocalParts(e.endsAt, timezone);
     return {
       user_id: userId,
-      tag_id: tagIdByLabel.get(e.tagLabel)!,
-      title: deriveBlockTitle({ label: e.tagLabel, kind: null, group: null }),
+      tag_id: tag.id,
+      title,
       date: start.date,
       start_time: start.time,
       end_time: end.time,
-      details: e.title.slice(0, 30),
+      details: e.title.slice(0, 200),
+      location: e.location ? e.location.slice(0, 60) : e.location,
     };
   });
 
@@ -68,5 +68,5 @@ export async function importIcsAsTags(file: File) {
   revalidatePath("/calendar");
   revalidatePath("/");
 
-  return { count: rows.length, tagLabels };
+  return { count: rows.length, label };
 }

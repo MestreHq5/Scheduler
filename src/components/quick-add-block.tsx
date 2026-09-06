@@ -29,6 +29,7 @@ export function QuickAddBlock({ tags, defaultDate, timezone }: { tags: Tag[]; de
   const setStart = (v: string) => setSlot((s) => ({ ...s, start: v }));
   const setEnd = (v: string) => setSlot((s) => ({ ...s, end: v }));
   const [details, setDetails] = useState("");
+  const [location, setLocation] = useState("");
   const [pending, startTransition] = useTransition();
 
   const selectedTag = tags.find((t) => t.id === tagId) ?? null;
@@ -43,8 +44,10 @@ export function QuickAddBlock({ tags, defaultDate, timezone }: { tags: Tag[]; de
         start_time: start,
         end_time: end,
         details: details.trim() ? details.trim() : null,
+        location: location.trim() ? location.trim() : null,
       });
       setDetails("");
+      setLocation("");
     });
   }
 
@@ -100,8 +103,15 @@ export function QuickAddBlock({ tags, defaultDate, timezone }: { tags: Tag[]; de
         <input
           value={details}
           onChange={(e) => setDetails(e.target.value)}
-          maxLength={30}
+          maxLength={200}
           placeholder="Details (optional)"
+          className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent w-36"
+        />
+        <input
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          maxLength={60}
+          placeholder="Location (optional)"
           className="rounded-lg bg-surface border border-border px-2 py-2 text-sm outline-none focus:border-accent w-36"
         />
         <button
