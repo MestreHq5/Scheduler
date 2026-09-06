@@ -355,6 +355,7 @@ New this pass — logo above "Scheduler," "Ad astra" tagline removed.
 
 ### Hub
 
+
 New this pass — "View all" now sits right next to the "Deadlines"
 heading instead of far-right of the row; a deadline/tracked-block's tag
 + date now sit right after its title instead of flush against the far
