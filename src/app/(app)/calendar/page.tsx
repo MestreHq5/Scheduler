@@ -6,7 +6,7 @@ import { WeekNav } from "@/components/week-nav";
 import { addDays, formatDateDMY, startOfWeek, todayInTimezone, weekDates } from "@/lib/dates";
 import type { Block } from "@/lib/database.types";
 
-type BlockWithTag = Block & { tag: { label: string; color: string } | null };
+type BlockWithTag = Block & { tag: { label: string; color: string; group: { label: string } | null } | null };
 
 export default async function CalendarPage({
   searchParams,
@@ -35,7 +35,7 @@ export default async function CalendarPage({
     supabase.from("tags").select("*").eq("archived", false).order("sort_order").order("created_at"),
     supabase
       .from("blocks")
-      .select("*, tag:tags(label,color)")
+      .select("*, tag:tags(label,color,group:tag_groups(label))")
       .eq("archived", false)
       .gte("date", monday)
       .lte("date", weekEnd),

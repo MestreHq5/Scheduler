@@ -13,8 +13,9 @@ const VISIBLE_HOURS = 12; // the viewport always shows this many hours without s
 const DEFAULT_HOUR_HEIGHT = 48;
 const SNAP_MINUTES = 15;
 const CLICK_THRESHOLD_PX = 5; // pointer movement below this is a click, not a drag
+const DETAILS_INLINE_MAX_CHARS = 14; // details this short share the time's row instead of taking their own
 
-type BlockWithTag = Block & { tag: { label: string; color: string } | null };
+type BlockWithTag = Block & { tag: { label: string; color: string; group: { label: string } | null } | null };
 
 type DragState = {
   id: string;
@@ -426,6 +427,13 @@ function BlockCard({
   const color = block.tag?.color ?? "#64748b";
   const textColor = contrastText(color);
 
+  const tagLabel = block.tag?.label ?? block.title;
+  const groupLabel = block.tag?.group?.label;
+  const headerLabel = groupLabel ? `${groupLabel} · ${tagLabel}` : tagLabel;
+  const timeLabel = `${block.start_time.slice(0, 5)}–${block.end_time.slice(0, 5)}`;
+  const details = block.details;
+  const detailsInline = !!details && details.length <= DETAILS_INLINE_MAX_CHARS;
+
   return (
     <div
       onPointerDown={onPointerDown}
@@ -448,7 +456,7 @@ function BlockCard({
         <span className="mx-auto mt-0.5 block h-0.5 w-6 rounded-full bg-current opacity-0 group-hover:opacity-50" />
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="font-medium truncate">{block.title}</span>
+        <span className="font-medium truncate">{headerLabel}</span>
         <button
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => startTransition(() => deleteBlock(block.id))}
@@ -459,14 +467,12 @@ function BlockCard({
           ×
         </button>
       </div>
-      <span style={{ opacity: 0.85 }}>
-        {block.start_time.slice(0, 5)}–{block.end_time.slice(0, 5)}
-      </span>
-      {block.details && (
+      {details && !detailsInline && (
         <span className="block truncate" style={{ opacity: 0.75 }}>
-          {block.details}
+          {details}
         </span>
       )}
+      <span style={{ opacity: 0.85 }}>{detailsInline ? `${details} · ${timeLabel}` : timeLabel}</span>
       <div
         onPointerDown={(e) => onResizeStart(e, "end")}
         className="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize touch-none"

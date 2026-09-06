@@ -48,10 +48,13 @@ day-to-day, desktop for weekly (Sunday) planning.
   Calendar import (real UTC instants, frozen on timezone change) —
   nothing writes to it today.
 - **`.ics` import is a one-shot action, not a persistent feed**
-  (`importIcsAsTag`, `src/lib/actions/ics.ts`): pick a file, type a tag
-  name, every event becomes a `blocks` row under a freshly-created tag
-  (one shared color/title). No stored feed, no re-sync — import again
-  under a new tag name any time. Converts UTC `DTSTART`/`DTEND` to
+  (`importIcsAsTags`, `src/lib/actions/ics.ts`): pick a file, no tag name
+  typed in the form — each event's `CATEGORIES` value *is* its tag name.
+  A brand-new tag is created per distinct `CATEGORIES` value found in the
+  file (own random color), so one import can populate several
+  differently-tagged calendars at once; `parseIcs` throws if any event is
+  missing `CATEGORIES`. No stored feed, no re-sync — import again any
+  time, it just creates more tags. Converts UTC `DTSTART`/`DTEND` to
   wall-clock via `instantToLocalParts` using the profile's timezone *at
   import time*, then it's fixed forever like any block. `parseIcs`
   (`src/lib/ics.ts`) doesn't expand `RRULE` — the Settings Help modal
@@ -168,8 +171,13 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   sideways on narrow phones with a long tag label).
 - **Calendar week view** (`src/components/week-calendar.tsx`) takes an
   arbitrary-length `weekDates` array (lets the Hub reuse it as a single-
-  day view). `hourHeight` is runtime-measured (`ResizeObserver` ÷ 12
-  visible hours). Drag-to-move and edge-resize are both optimistic
+  day view, including on the Hub). `hourHeight` is runtime-measured
+  (`ResizeObserver` ÷ 12 visible hours). Block cards show the tag's
+  `group · tag` (just `tag` if it has no group; falls back to the block's
+  stored `title` when tagless) as line one, `details` as line two, then
+  the time range on its own line three — except `details` at or under
+  `DETAILS_INLINE_MAX_CHARS` (14) shares line two with the time instead,
+  to save vertical space on short blocks. Drag-to-move and edge-resize are both optimistic
   inside the same transition as the server call. A stationary
   pointerdown/up (under `CLICK_THRESHOLD_PX`) opens `BlockEditModal`
   instead of firing a no-op move. The now-line uses the profile's
@@ -192,13 +200,15 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   series color is each tag's own color. Insight card only shows period-
   over-period % change/trend — most-active-weekday and a completion-rate
   insight were tried and cut, don't re-add without asking.
-- **Settings' "Import .ics"** (`ics-import-form.tsx`): tag-name input +
-  file input + Import button, no sync/status bookkeeping in the UI.
-  Errors from `importIcsAsTag` are caught locally (`try`/`catch` inside
-  the `useTransition` callback) and shown inline — letting that reject
+- **Settings' "Import .ics"** (`ics-import-form.tsx`): file input + Import
+  button only, no tag-name input, no sync/status bookkeeping in the UI —
+  tags come from each event's `CATEGORIES` value. Errors from
+  `importIcsAsTags` are caught locally (`try`/`catch` inside the
+  `useTransition` callback) and shown inline — letting that reject
   unhandled once crashed the page; don't drop this try/catch.
   `IcsHelpModal` is static content for a non-technical reader *and* an
-  AI generating the file — central point: one event per date, no RRULE.
+  AI generating the file — central points: one event per date (no
+  RRULE), and every event needs a `CATEGORIES` value.
 - **NavShell** (`src/components/nav-shell.tsx`): every page shares
   `max-w-5xl px-4 md:px-8`. Sidebar nav rows and the bottom email/theme/
   log-out group are centered as **shrink-to-fit groups** (no `w-full` on

@@ -11,8 +11,10 @@ const QUOTE = "Ad astra per aspera.";
 const TRACKER_WINDOW_DAYS = 120;
 const DEADLINE_WINDOW_DAYS = 14;
 
-type BlockWithTag = Block & { tag: { label: string; color: string } | null };
-type BlockWithWork = Block & { tag: { label: string; color: string; counts_as_work: boolean } | null };
+type BlockWithTag = Block & { tag: { label: string; color: string; group: { label: string } | null } | null };
+type BlockWithWork = Block & {
+  tag: { label: string; color: string; counts_as_work: boolean; group: { label: string } | null } | null;
+};
 
 export default async function HubPage() {
   const supabase = await createClient();
@@ -32,7 +34,7 @@ export default async function HubPage() {
     supabase.from("tags").select("*").eq("archived", false).order("sort_order").order("created_at"),
     supabase
       .from("blocks")
-      .select("*, tag:tags(label,color,counts_as_work)")
+      .select("*, tag:tags(label,color,counts_as_work,group:tag_groups(label))")
       .eq("archived", false)
       .eq("date", today)
       .order("start_time"),

@@ -2,29 +2,28 @@
 
 import { useRef, useState, useTransition } from "react";
 import { clsx } from "clsx";
-import { importIcsAsTag } from "@/lib/actions/ics";
+import { importIcsAsTags } from "@/lib/actions/ics";
 import { IcsHelpModal } from "@/components/ics-help-modal";
 
 export function IcsImportForm() {
-  const [tagLabel, setTagLabel] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+  const [hasFile, setHasFile] = useState(false);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null);
 
   function handleImport() {
     const file = fileRef.current?.files?.[0];
-    const label = tagLabel.trim();
-    if (!label || !file) return;
+    if (!file) return;
 
     setMessage(null);
     startTransition(async () => {
       try {
-        const result = await importIcsAsTag(label, file);
+        const result = await importIcsAsTags(file);
         setMessage({
           error: false,
-          text: `Imported ${result.count} event${result.count === 1 ? "" : "s"} as "${result.label}".`,
+          text: `Imported ${result.count} event${result.count === 1 ? "" : "s"} across ${result.tagLabels.length} tag${result.tagLabels.length === 1 ? "" : "s"}: ${result.tagLabels.join(", ")}.`,
         });
-        setTagLabel("");
+        setHasFile(false);
         if (fileRef.current) fileRef.current.value = "";
       } catch (err) {
         setMessage({ error: true, text: err instanceof Error ? err.message : "Import failed." });
@@ -39,23 +38,24 @@ export function IcsImportForm() {
         <IcsHelpModal />
       </div>
       <p className="text-xs text-text-muted -mt-2">
-        Upload a .ics file and name a tag — every event in it becomes a block under that tag, all one color. Import
-        again with a different name any time you need to add another calendar.
+        Upload a .ics file — each event&apos;s CATEGORIES value becomes its own tag, created fresh with its own
+        color, so one file can import several differently-tagged calendars at once. Import again any time you need
+        to add more.
       </p>
 
       <div className="flex flex-col sm:flex-row gap-2">
         <input
-          value={tagLabel}
-          onChange={(e) => setTagLabel(e.target.value)}
-          placeholder="Tag name, e.g. Classes"
-          className="flex-1 rounded-lg bg-surface border border-border px-3 py-2 text-sm outline-none focus:border-accent"
+          ref={fileRef}
+          type="file"
+          accept=".ics,text/calendar"
+          onChange={(e) => setHasFile(!!e.target.files?.length)}
+          className="text-xs flex-1"
         />
-        <input ref={fileRef} type="file" accept=".ics,text/calendar" className="text-xs sm:flex-1" />
       </div>
 
       <button
         type="button"
-        disabled={pending || !tagLabel.trim()}
+        disabled={pending || !hasFile}
         onClick={handleImport}
         className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-50"
       >
