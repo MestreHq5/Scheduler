@@ -9,7 +9,9 @@ day-to-day, desktop for weekly (Sunday) planning.
 
 ## Stack
 
-- Next.js 15 (App Router, TypeScript) on Vercel free tier.
+- Next.js 15 (App Router, TypeScript). Deployed to Vercel
+  (`getscheduler.vercel.app`), GitHub App connected — every push to
+  `main` auto-deploys to production.
 - Supabase free tier: Postgres + Auth + Storage. RLS is the backstop, not
   the only check — Server Actions in `src/lib/actions/` do the mutations.
 - Auth: Supabase Auth, Google OAuth primary + email magic-link fallback.
@@ -17,165 +19,125 @@ day-to-day, desktop for weekly (Sunday) planning.
 - Tailwind v4, custom tokens only (`src/app/globals.css`, `--scheduler-*`
   → `--color-*`) — dark "dusk cockpit" (default) + light theme, toggled
   via `data-theme` on `<html>`. Fraunces (display/serif) + Space Grotesk
-  (UI). **Never hardcode a hex color when a token fits** — add a token
-  pair (dark + light) instead.
+  (UI). **Never hardcode a hex color when a token fits.**
 - `src/lib/database.types.ts` is hand-written to match
   `supabase/migrations/`; regenerate via `npx supabase gen types
   typescript --linked` instead of hand-editing further, once linked.
-- App logo/favicon is `public/logo.png` (also `src/app/icon.png`) — a
-  real asset now, not the earlier placeholder inline SVG. Used on
-  login/onboarding/404 and the sidebar.
+- App logo/favicon: `public/logo.png` / `src/app/icon.png`.
 
 ## Rules that aren't obvious from the code
 
 - **Tasks and blocks are NOT linked** — connected only implicitly via
-  shared `tag_id`. Tried as a real relation in the Notion prototype and
-  explicitly rejected (too much upkeep). Don't reintroduce a relation.
-- **Parent/child task auto-completion is enforced in Postgres**, not
-  client-side (`tasks_derive_done` + `tasks_propagate_to_ancestors`,
-  `0001_init.sql`) — a task with children always has `done` derived from
-  them, bidirectionally, up to 3 nesting levels (`depth` 0–2, a trigger
-  rejects a 4th).
-- **`moveTask` (drag reparent, `src/lib/actions/tasks.ts`) always detaches
-  the moved task's direct children first** (promoting them to independent
-  roots — grandchildren stay attached to their now-promoted parent), then
-  reparents the moved task. This ordering is what makes a cycle
-  impossible (the moved task always has zero children when its own
-  `parent_id` write happens) and covers every reparent case in one rule.
-  Depth changes cascade to descendants via `tasks_after_depth_cascade`
-  (`0003_task_move_and_completed_at.sql`). Task delete is permanent
-  (`deleteTask`) — the UI always confirms first, there's no undo/trash.
-- **Blocks store plain wall-clock `date`/`start_time`/`end_time`**, not a
-  UTC instant — deliberately immune to timezone changes, `.ics` imports
-  included (see below). `imported_events`/`frozen_*` (`src/lib/actions/
-  profile.ts`) is a *different*, currently-unused mechanism reserved for a
-  future Google Calendar import (real UTC instants, frozen on timezone
-  change) — nothing writes to `imported_events` today.
+  shared `tag_id`. Tried as a real relation and explicitly rejected (too
+  much upkeep). Don't reintroduce one.
+- **Parent/child task auto-completion is enforced in Postgres**
+  (`tasks_derive_done` + `tasks_propagate_to_ancestors`, `0001_init.sql`)
+  — a task with children always has `done` derived from them,
+  bidirectionally, up to 3 nesting levels (`depth` 0–2, a trigger rejects
+  a 4th).
+- **`moveTask` (`src/lib/actions/tasks.ts`) always detaches the moved
+  task's direct children first** (promoting them to independent roots),
+  then reparents the moved task — this ordering is what makes a cycle
+  impossible in one rule. Depth cascades via `tasks_after_depth_cascade`
+  (`0003_task_move_and_completed_at.sql`). Task delete is permanent, no
+  undo — UI always confirms first.
+- **Blocks store plain wall-clock `date`/`start_time`/`end_time`**, never
+  a UTC instant — immune to timezone changes, `.ics` imports included.
+  `imported_events`/`frozen_*` (`src/lib/actions/profile.ts`) is a
+  separate, currently-unused mechanism reserved for a future Google
+  Calendar import (real UTC instants, frozen on timezone change) —
+  nothing writes to it today.
 - **`.ics` import is a one-shot action, not a persistent feed**
   (`importIcsAsTag`, `src/lib/actions/ics.ts`): pick a file, type a tag
-  name, and every event becomes a `blocks` row under a freshly-created tag
-  (one shared color/title for the whole import) — no stored feed, no
-  re-sync, no tracking of what was previously imported. Import again (same
-  file or a new one) any time to add more, under another tag name.
-  Converts each event's UTC `DTSTART`/`DTEND` to wall-clock via
-  `instantToLocalParts` using the profile's timezone *at import time*, then
-  it's fixed forever like any other block. `parseIcs` (`src/lib/ics.ts`)
-  doesn't expand `RRULE` — the Settings Help modal tells the user (or an AI
-  building the file for them) to write one `VEVENT` per date instead of a
-  recurrence rule. An earlier version of this feature (two fixed
-  "classes"/"tests" feed slots, persistent re-syncable feeds with a "Sync
-  now" button, `blocks.ics_source`/`ics_uid` dedupe columns, `ics_feeds.
-  tag_id`) was built and then replaced by this simpler one-shot design in
-  the same session, per direct feedback that per-source tracking and
-  "syncing" language added confusion for no benefit here. That schema is
-  still in the database (additive migrations aren't reverted without being
-  asked) but nothing reads or writes `ics_feeds`, the `ics-feeds` storage
-  bucket, or `blocks.ics_source`/`ics_uid` anymore — safe cleanup
-  candidates for a future migration, not done yet.
+  name, every event becomes a `blocks` row under a freshly-created tag
+  (one shared color/title). No stored feed, no re-sync — import again
+  under a new tag name any time. Converts UTC `DTSTART`/`DTEND` to
+  wall-clock via `instantToLocalParts` using the profile's timezone *at
+  import time*, then it's fixed forever like any block. `parseIcs`
+  (`src/lib/ics.ts`) doesn't expand `RRULE` — the Settings Help modal
+  tells the user (or an AI building the file) to write one `VEVENT` per
+  date instead. A more complex feed-tracking version of this (fixed
+  "classes"/"tests" slots, re-syncable, dedupe columns) was built and
+  replaced by this simpler design in the same session — don't resurrect
+  it without re-checking it's still wanted. `ics_feeds`, `imported_events`
+  storage, and `blocks.ics_source`/`ics_uid` are vestigial leftovers from
+  that (see Data model, Not yet built).
 - **A tag or its whole group can opt out of `duplicateWeek`**
-  (`exclude_from_duplicate`, `0008_tag_exclude_from_duplicate.sql`) — a
-  block is skipped when copying to next week if its own tag OR that tag's
-  group has the flag; tagless blocks always copy (same "tagless always
-  included" precedent as `counts_as_work`). Toggled via a "Skip copy" pill
-  next to "Work"/"Study" in Tag and Tag group settings rows.
+  (`exclude_from_duplicate`, `0008_tag_exclude_from_duplicate.sql`) —
+  skipped if its own tag OR the tag's group has the flag; tagless blocks
+  always copy. Toggled via a "Skip copy" pill next to "Work"/"Study".
 - **`WeekNav` force-prefetches both neighboring weeks**
   (`router.prefetch(href, { kind: PrefetchKind.FULL })`) so clicking
-  through several weeks in a row feels instant instead of a fresh Supabase
-  round-trip per click. `PrefetchKind` isn't exported from the public
-  `next/navigation` entry — `router.prefetch`'s `kind` option is typed
-  against the real enum in Next 15, so this deep-imports `next/dist/client/
-  components/router-reducer/router-reducer-types`. The *default* prefetch
-  (no `kind`) only warms the static shell for a `searchParams`-driven
-  dynamic page like this one, not the actual Supabase data — don't
-  "simplify" this back to a bare `router.prefetch(href)`, it stops helping.
-  If a Next major upgrade breaks this deep-import path, relocate it, don't
-  delete it.
+  through weeks feels instant. `PrefetchKind` isn't exported from public
+  `next/navigation` — deep-imports `next/dist/client/components/router-
+  reducer/router-reducer-types`. The *default* prefetch (no `kind`) only
+  warms the static shell for this `searchParams`-driven page, not the
+  actual Supabase data — don't simplify this back, it stops helping.
 - **Calendar-date arithmetic must never round-trip through a local-time
-  `Date` + `.toISOString()`** — that silently shifts results a day under
-  a positive UTC offset. This broke "next week" *and*, separately,
-  `duplicateWeek` (its own inline instance of the same anti-pattern, not
-  caught by the first fix) before being caught. `src/lib/dates.ts` does
-  all date-part math in pure UTC millis (`addDays`, `daysBetween`,
-  `resolveRangePreset`, etc.) — always reuse those helpers for new date
-  math instead of writing another local-`Date` version.
-- **Tag groups replace the old fixed `kind: unit/other` split**
-  (`0005_tag_groups.sql`): `tag_groups (label, color, is_study_unit,
-  sort_order)`, tags get a nullable `group_id`. A group's
-  `is_study_unit` drives the "Study {label}" block-title treatment
-  (`deriveBlockTitle`, `src/lib/tags.ts`) — falls back to the legacy
-  `kind` column only for tags that predate groups and were never
-  assigned one (kept, NOT NULL relaxed, not backfilled — no need, the
-  fallback covers it). Picking a group pre-fills its color (still
-  editable, and re-fills whenever the group selection changes again,
-  both at tag creation and when re-grouping an existing tag); no group →
-  a random preset color. Color pickers everywhere are the custom
-  `ColorPicker` component (curated swatch grid + a tucked-away native
-  `<input type=color>` for anything else) — never the bare native input.
-- **A tag's `counts_as_work` flag** (`0006_tag_counts_as_work.sql`,
-  default `true`) drives the Hub's daily work-progress bar — lets Gym/
-  Free-style tags opt out of counting as "work". Tagless blocks always
-  count. Toggled per tag in Settings (styled pill, not a checkbox).
-- **Tag delete → referencing tasks/blocks become tagless** (`ON DELETE
-  SET NULL`). **Tag archive → cascades to that tag's *future*
-  tasks/blocks only**; past stays untouched, unarchive reverses exactly
-  that set. Same semantics for tag-group delete (tags become ungrouped).
-  See `src/lib/actions/tags.ts` / `tag-groups.ts`.
+  `Date` + `.toISOString()`** — silently shifts results a day under a
+  positive UTC offset (broke "next week" and `duplicateWeek` separately
+  before being caught). `src/lib/dates.ts` does all date-part math in
+  pure UTC millis (`addDays`, `daysBetween`, `resolveRangePreset`) —
+  always reuse those instead of a new local-`Date` version.
+- **Tag groups** (`tag_groups`: label, color, `is_study_unit`,
+  sort_order) — a group's `is_study_unit` drives the "Study {label}"
+  block-title treatment (`deriveBlockTitle`, `src/lib/tags.ts`); falls
+  back to the legacy per-tag `kind` column only for tags that predate
+  groups. Picking a group pre-fills (and re-fills) a tag's color; no
+  group → random preset color. Color pickers are always the custom
+  `ColorPicker` component, never the bare native input.
+- **`counts_as_work`** (per tag, default `true`) drives the Hub's daily
+  work-progress bar; tagless blocks always count. **`exclude_from_
+  duplicate`** follows the same "tagless always included" precedent.
+- **Tag delete → referencing tasks/blocks become tagless.** **Tag/group
+  archive or delete → cascades to that tag's *future* tasks/blocks
+  only**; past stays untouched, unarchive reverses exactly that set.
 - **Task nesting caps at 3 levels; block titles are always auto-derived
   from the tag**, never typed, everywhere.
-- **Tag colors are freely repeatable**, not unique per tag — lets several
-  tags deliberately share a "group color."
-- **Every `tags`/`tag_groups` fetch orders by `.order("sort_order")
-  .order("created_at")`, never `sort_order` alone.** `sort_order` defaults
-  to `0` for every row (no drag-reorder UI for tags/groups sets it to
-  anything else), so with an all-ties `sort_order` column Postgres doesn't
-  guarantee stable ordering across queries — a real bug where toggling a
-  "Work"/"Skip copy" pill correctly updated the clicked tag server-side,
-  but the list order shifted between the click and the revalidated
-  re-render, making it look like a *different* row's pill had toggled.
-  `created_at` is a stable, meaningful tiebreaker (oldest first). Any new
-  `tags`/`tag_groups` fetch must use both `.order()` calls, not just one.
+- **Tag colors are freely repeatable** — lets several tags share a
+  "group color" on purpose.
+- **Every `tags`/`tag_groups` fetch must order by `.order("sort_order")
+  .order("created_at")`, never `sort_order` alone.** `sort_order`
+  defaults to `0` for every row (nothing sets it otherwise), so Postgres
+  doesn't guarantee stable order across queries with an all-ties column
+  — caused a real bug where a "Work"/"Skip copy" pill toggle looked like
+  it hit the wrong tag because the list silently re-sorted between click
+  and re-render. `created_at` is a stable tiebreaker.
 - Migrations are applied to the live Supabase project via a short-lived
   Node script (`pg` package + `SUPABASE_DB_URL` from `.env.local`,
-  `npm install --no-save pg`, removed after) — there's no staging
-  environment, so ask before running anything non-additive (dropping/
-  narrowing a column, not just adding one).
+  `npm install --no-save pg`, removed after) — no staging environment,
+  so ask before anything non-additive (dropping/narrowing a column).
 - The Supabase DB password passed through chat in plaintext during setup
-  and still lives in `.env.local` — rotate it once the app is stable
-  (Project Settings → Database → Reset database password).
+  and still lives in `.env.local` — rotate it once the app is stable.
 
 ## Explicitly rejected — don't re-propose without new information
 
-- Task ↔ block relation with manual reassignment (see above).
-- Side-by-side stats/column layouts on mobile — single-column by default,
-  side-by-side only on wide viewports.
-- A full calendar-grid embedded on the Hub was once rejected for mobile —
-  since superseded: the Hub now embeds a single-*day* view (today only),
-  which is a deliberately smaller thing than the earlier "full grid"
-  proposal. Don't reflate it into a full week grid there.
+- Task ↔ block relation with manual reassignment.
+- Side-by-side stats/column layouts on mobile — single-column by
+  default, side-by-side only on wide viewports.
+- A full calendar-grid embedded on the Hub — superseded by a single-
+  *day* view (today only); don't reflate it into a full week grid.
+- Connector lines/nodes and FLIP slide-on-expand animation in the task
+  tree — both cut (fragile SVG geometry, broke often); the columned/
+  indented spacing now carries the nesting signal on its own.
 
 ## Data model
 
 Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
 
-- **`tags`**: `{ id, label, color, kind: "unit"|"other"|null (legacy),
-  group_id (nullable → tag_groups), counts_as_work (default true),
-  exclude_from_duplicate (default false), archived, sort_order }`.
+- **`tags`**: `{ id, label, color, kind (legacy), group_id, counts_as_work
+  (default true), exclude_from_duplicate (default false), archived,
+  sort_order }`.
 - **`tag_groups`**: `{ id, label, color, is_study_unit,
   exclude_from_duplicate (default false), sort_order }`.
-- **`tasks`**: `{ id, title, tag_id, done (derived once it has children),
-  due_date, notes, parent_id, depth (0–2), completed_at, created_at }`.
+- **`tasks`**: `{ id, title, tag_id, done (derived), due_date, notes,
+  parent_id, depth (0–2), completed_at, created_at }`.
 - **`blocks`**: `{ id, tag_id, title (auto-derived), date, start_time,
-  end_time, details (≤30 chars), ics_source/ics_uid (nullable, vestigial —
-  see Rules), created_at }`.
-- **`ics_feeds`**, **`imported_events`**: still in the database but
-  vestigial — nothing reads or writes either right now (see Rules'
-  `.ics` import bullet). `ics_feeds` was `{ source: "classes"|"tests",
-  label, kind: "url"|"file", url, storage_path, tag_id, last_sync_* }`;
-  `imported_events` was `{ source: "classes"|"tests"|"google", title,
-  starts_at/ends_at (UTC), location, raw_uid (dedupe), frozen_* }`.
-- **`google_calendar_connections`**: `{ google_account_email, calendar_id,
-  sync_direction: "import"|"export", refresh_token }` — not wired up yet
-  (client ID/secret in `.env.local`, no callback route).
+  end_time, details (≤30 chars), ics_source/ics_uid (nullable,
+  vestigial), created_at }`.
+- **`ics_feeds`**, **`imported_events`**: vestigial, unused by any
+  current code path (see Rules' `.ics` import bullet).
+- **`google_calendar_connections`**: not wired up yet.
 
 ## Build/lint
 
@@ -183,304 +145,115 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
 
 ## Architecture notes (non-obvious implementation details)
 
-- **Task tree** (`src/components/task-tree.tsx`): one 3-column
-  (main/sub/sub-sub) grid **per root task**, stacked vertically — not one
-  tree-wide set of 3 columns. This is what guarantees a root's card
-  always starts below the *entire* expanded subtree of the root above it
-  (no cross-root bleed) — a real bug when it was tree-wide (a short
-  subtree in one root left the next root's card floating beside a much
-  taller neighboring column). No connector lines/nodes and no FLIP
-  slide-on-expand animation anymore — both were cut (SVG connector
-  geometry was fragile and broke often; the columned-per-root spacing
-  now carries the "which subtree is this in" signal on its own).
-  `expandedIds` (a `Set`) still lives centrally in `TaskTree`, **seeded
-  on mount with every task that has children** (fully open by default —
-  collapsing is a user action, not the initial state); a task's children
-  only render in the next column while its id is in the set, and adding
-  a first subtask via the inline quick-add calls `ensureExpanded` so
-  it's immediately visible. Drag-reparent (grip handle, long-press,
-  `moveTask`) is now **optimistic** (`useOptimistic`, mirroring
-  `week-calendar.tsx`'s pattern) — `applyOptimisticMove` locally
-  replays the same detach-children-then-reparent rule `moveTask` runs
-  server-side so the move is instant instead of waiting on a full
-  round-trip + revalidate; a failed move surfaces a dismissable error
-  banner and self-reverts. Card background is depth-based
-  (`--color-level-0/1/2`, pure gray scale, distinct from the
-  navy-tinted `surface`/`surface-2`). Below `md` everything still
-  stacks into one column, so a group is now root → its children → its
-  grandchildren, in that order — also fixes a pre-existing mobile bug
-  where all roots listed first, then every child of every root mixed
-  together, then every grandchild. Below `md`, depth 1/2 cards also get a
-  left-margin indent (`MOBILE_INDENT`, `max-md:ml-4`/`max-md:ml-8` — pure
-  margin, deliberately not `pl-*`, so it can't collide with `LEVEL_CARD`'s
-  own padding) and shrink further (`max-md:px-*`/`py-*` on `LEVEL_CARD`),
-  standing in for the desktop column-per-depth layout without adding a
-  real column. The "under {parent}" mobile-only label is bolder/bigger
-  now ("↳ under X") after it read as too subtle. Known remaining gap: a
-  root's children list together, then *all* of those children's own
-  children list together afterward (grouped by depth, not per-parent), so
-  indentation alone can't fully disambiguate which grandchild belongs to
-  which child when a root has multiple children that each have their own
-  children — fixing that needs mobile to render recursively (child
-  immediately followed by its own children) instead of reusing this
-  three-level-grouped structure, without regressing desktop's column
-  layout, which depends on the same grouping. Not done yet — see Mobile
-  review. The due-date picker trigger now sits on its own line below the
-  tag/count/subtask-button row (previously shared one `flex-wrap` row),
-  which was overflowing sideways with a long tag label + due date + "+
-  subtask" together on a narrow phone screen.
-- **Calendar week view** (`src/components/week-calendar.tsx`) now takes
-  an arbitrary-length `weekDates` array (grid columns and weekday labels
-  are both derived from the array/date, not hardcoded to 7/Monday-start)
-  — this is what lets the Hub reuse it as a single-day view. `hourHeight`
-  is runtime-measured (`ResizeObserver` on the scroll container ÷ 12
-  visible hours), reused for all position/drag/resize math. Drag-to-move
-  and edge-resize (two small handles per block, independent `resize`
-  state from `drag`) are both optimistic (`useOptimistic`) inside the
-  same transition as the `moveBlock` call. A stationary pointerdown/up
-  (under `CLICK_THRESHOLD_PX`) is a click, not a drag — opens
-  `BlockEditModal` instead of firing a no-op move. A live now-line uses
-  `nowClockInTimezone(timezone)` (the profile's timezone, not the
-  browser's). Week nav lives in a separate `WeekNav` client component
-  (`router.push` inside `useTransition`, dims instead of flashing while
-  pending, force-prefetches both neighboring weeks — see Rules) — this
-  file has no navigation itself. New blocks default to the next full hour
-  from now (`nextHourSlot` in `quick-add-block.tsx`). The scroll container
-  carries an even `p-2` on all sides (weekday header row and day columns
-  used to butt directly against the card's border) — safe to add here
-  specifically because `position: sticky` offsets (the day-header row,
-  the hour-label column) resolve against the *padding* edge of their
-  scrolling ancestor, so the padding reads as a permanent margin rather
-  than scrolling away or leaving a gap under the sticky pieces.
+- **Task tree** (`src/components/task-tree.tsx`): one 3-column grid
+  **per root task**, stacked vertically — guarantees a root always
+  starts below the *entire* expanded subtree of the root above it (was a
+  real bug when columns were tree-wide). `expandedIds` seeds on mount
+  with every task that has children (fully open by default). Drag-
+  reparent is **optimistic** (`useOptimistic`) — `applyOptimisticMove`
+  locally replays `moveTask`'s detach-then-reparent rule; a failed move
+  shows a dismissable error and self-reverts. Card background is depth-
+  based (`--color-level-0/1/2`). Below `md`, groups render root → its
+  children → its grandchildren (flat, grouped by depth — not properly
+  per-parent), with a left-margin indent per depth (`MOBILE_INDENT`,
+  pure margin, not `pl-*`, so it can't collide with the card's own
+  padding) standing in for the desktop column layout. Known gap: because
+  grandchildren are still grouped by depth rather than rendered
+  recursively under their actual parent, indentation alone can't fully
+  disambiguate ownership when a root has multiple children that each
+  have their own children — fixing that means real recursive rendering
+  on mobile without regressing desktop's column layout (same grouping
+  data). Not done. The due-date picker sits on its own line below the
+  tag/count/subtask row (was sharing one wrappable row, overflowed
+  sideways on narrow phones with a long tag label).
+- **Calendar week view** (`src/components/week-calendar.tsx`) takes an
+  arbitrary-length `weekDates` array (lets the Hub reuse it as a single-
+  day view). `hourHeight` is runtime-measured (`ResizeObserver` ÷ 12
+  visible hours). Drag-to-move and edge-resize are both optimistic
+  inside the same transition as the server call. A stationary
+  pointerdown/up (under `CLICK_THRESHOLD_PX`) opens `BlockEditModal`
+  instead of firing a no-op move. The now-line uses the profile's
+  timezone, not the browser's. `WeekNav` is a separate client component
+  (see Rules' prefetch bullet). The scroll container has an even `p-2`
+  padding — safe because `position: sticky` offsets resolve against the
+  *padding* edge of the scrolling ancestor, so it reads as a permanent
+  margin rather than a scrolling gap.
 - **Date/time pickers** (`wheel-date-picker.tsx`, `circular-time-
-  picker.tsx`) both support full keyboard control now: the date wheel's
-  ←/→ move focus between day/month/year, ↑/↓ nudge the focused column's
-  value (a `WheelColumn` `useEffect` on `value` syncs its scroll position
-  to *external* changes, not just its own scroll gesture), Enter commits.
-  The time dial is a real 24h Android-style face — the hour step renders
-  outer (1–12) and inner (13–23 & 00) rings simultaneously, tap either
-  directly; ←/→ rotate the value by 1h (crossing rings naturally at the
-  wrap), ↑/↓ jump exactly ±12h (same clock position, other ring), Enter
-  commits. No AM/PM anywhere anymore.
-- **Hub** (`src/app/(app)/page.tsx`): a 2-column layout (stacks on
-  mobile) — left: `DeadlinesPanel` (due-date range presets: today/3
-  days/week/2 weeks) + `TagTracker` (pick tag(s), see each one's next 5
-  upcoming blocks — e.g. add a "Tests" tag and track every exam at a
-  glance); right: `WeekCalendar` reused with `weekDates={[today]}`. A
-  `WorkProgress` bar above both sums today's blocks whose tag
-  `counts_as_work` (tagless blocks always count) and shows elapsed vs.
-  total, blocks-in-progress counting proportionally so it creeps forward
-  smoothly rather than jumping once per finished block.
+  picker.tsx`): full keyboard control (arrows move/nudge, Enter
+  commits). The time dial is a 24h face with outer (1–12) and inner
+  (13–23 & 00) rings rendered simultaneously — no AM/PM anywhere.
+- **Hub** (`src/app/(app)/page.tsx`): 2-column (stacks on mobile) —
+  `DeadlinesPanel` + `TagTracker` left, single-day `WeekCalendar` right.
+  `WorkProgress` bar sums today's `counts_as_work` blocks, elapsed vs.
+  total, with in-progress blocks counting proportionally.
 - **Stats** (`src/app/(app)/stats/page.tsx`): server fetches a bounded
-  12-month window of `blocks` + all non-archived `tasks` (every depth);
-  `StatsExplorer` (tag multi-select + range-preset plot + insight card)
-  and `TagBreakdown` (single tag + interval → counts) do all
-  filtering/aggregation client-side — this is interactive filtering, not
-  something that benefits from a server round-trip per change. `LineChart`
-  is a dependency-free hand-rolled SVG chart (matches `bar-chart.tsx`'s
-  existing no-library approach); series color is each tag's own `color`
-  (not a generated palette), reusing the identity color already used for
-  pills/blocks everywhere else. Insight card only shows period-over-period
-  % change and trend direction — most-active-weekday and a completion-
-  rate insight were tried and explicitly cut, don't re-add without
-  asking.
-- **Settings' "Import .ics"** (`src/components/ics-import-form.tsx`) is a
-  single tag-name input + file input + Import button — no per-source
-  slots, no sync-status/last-synced bookkeeping in the UI at all. Errors
-  from `importIcsAsTag` are caught locally in the component (`try`/`catch`
-  inside the `useTransition` callback) and shown as an inline message
-  rather than left to reject as an unhandled Server Action error — letting
-  that reject unhandled once genuinely crashed the page (dev error
-  overlay) when a leftover `ics_feeds` row from the old design had no
-  usable source configured; don't drop this try/catch when touching the
-  action. `IcsHelpModal` (`src/components/ics-help-modal.tsx`) is static
-  content only, written for a non-technical reader *and* an AI generating
-  the file on the user's behalf — its central point is "list every date as
-  its own event, don't use a repeating rule," since `parseIcs` doesn't
-  expand `RRULE`.
-- **NavShell** (`src/components/nav-shell.tsx`) content width: every
-  page shares the same `max-w-5xl px-4 md:px-8` — was split (`max-w-full`
-  for `/`, `/calendar`, `/tasks` + `/tasks/archive`; `max-w-3xl` for
-  Settings) until explicitly unified to match Stats everywhere, so the
-  calendar/task-tree pages are no longer edge-to-edge on wide viewports.
-  Sidebar nav rows, the logo/title block, and the bottom email/theme-
-  toggle/log-out group are all centered **as shrink-to-fit groups**
-  (`items-center` on their flex-column parents, no `w-full` on the
-  buttons) — a plain `w-full` button/link stretches its hover/active
-  background the full column width, which reads as left-aligned even
-  though the icon+label inside is itself centered. The dotted divider
-  above the email is a fixed `w-28`, not `flex-1` on both sides, so it
-  doesn't visually outspan that now-narrower centered group beneath it.
-  The sidebar/content divider is a soft top-to-bottom gradient line
-  (absolutely positioned `w-px` span with a `via-border` gradient), not
-  a flat `border-r`. `html { scrollbar-gutter: stable }` (`globals.css`)
-  keeps the sidebar from shifting a few px when navigating between a
-  page tall enough to need a scrollbar and one that isn't. The mobile
-  bottom nav (`fixed bottom-0 inset-x-0`) carries an explicit `z-40` —
-  added after a report of page content visually crossing above it; it
-  should already have painted on top by default DOM-order stacking, but
-  making it explicit removes any doubt.
-- Light theme (`globals.css`) is deliberately a step darker than a raw
-  white — `--scheduler-bg`/`surface`/`surface-2` are all light *grays*,
-  not `#fff`, and body text gets `font-weight: 500` (Space Grotesk 500
-  is loaded in `layout.tsx`) — plain 400-weight text on a near-white
-  ground read as washed out.
-- `contrastText()` (tag-color legibility) lives in `src/lib/color.ts`,
-  shared by the calendar and Stats. `randomTagColor()` and
-  `deriveBlockTitle()` live in `src/lib/tags.ts`. `formatDateDMY()`
-  (`src/lib/dates.ts`) is the one user-facing date format in the app —
-  `DD/MM` or `DD/MM/YYYY`, always zero-padded — `WheelDatePicker`
-  computes it once and hands it to callers as `label` alongside the raw
-  `value`; never render a raw `YYYY-MM-DD` or a `.slice(5)` fragment.
-
-## Page review
-
-Write notes directly under the relevant heading as you go through `npm
-run dev` — plain description, no need to phrase it as a question. Use a
-nested `Q:`/`A:` pair right there for anything that needs a decision
-before it can be built. Once a page's notes are addressed, this gets
-wiped back to an empty heading (or a short confirmed-status line) for
-the next pass — so it never carries more than one round's worth at a
-time. Everything built last round is written up in Architecture Notes/
-Rules above, not repeated here.
-
-### Onboarding
-
-Confirmed good.
-
-### Login
-
-New this pass — logo above "Scheduler," "Ad astra" tagline removed.
-
-
-### Hub
-
-
-New this pass — "View all" now sits right next to the "Deadlines"
-heading instead of far-right of the row; a deadline/tracked-block's tag
-+ date now sit right after its title instead of flush against the far
-edge; the gap between the two Hub columns is wider; all dates render
-`DD/MM` via `formatDateDMY()`.
-
-### Tasks
-
-New this pass — each root task is now its own 3-column group (see
-Architecture Notes), so a root always starts below the *entire*
-expanded subtree of the root above it; connector lines/nodes and the
-FLIP slide animation are both gone; drag-reparent is optimistic now
-(instant move, error banner + auto-revert on failure).
-
-### Calendar
-
-Confirmed good — margin now matches the rest of the app (see Other).
-
-### Settings
-
-Confirmed good — margin now matches the rest of the app (see Other).
-
-### Stats
-
-Confirmed good — still wants a week of real use before being called
-bug-free.
-
-### Other
-
-New this pass — logo/favicon swap (new background-less mark, square-
-cropped from the source art); sidebar delimiter is now a soft gradient
-fade instead of a flat border; logo/title, nav tabs, and the bottom
-email/theme-toggle/log-out are all centered as shrink-to-fit groups;
-all pages share the same horizontal padding as Stats; light theme
-background is a step darker and body text is heavier; the sidebar no
-longer shifts a few px between tall and short pages
-(`scrollbar-gutter: stable`).
+  12-month window; `StatsExplorer`/`TagBreakdown` do all filtering
+  client-side. `LineChart` is a dependency-free hand-rolled SVG chart;
+  series color is each tag's own color. Insight card only shows period-
+  over-period % change/trend — most-active-weekday and a completion-rate
+  insight were tried and cut, don't re-add without asking.
+- **Settings' "Import .ics"** (`ics-import-form.tsx`): tag-name input +
+  file input + Import button, no sync/status bookkeeping in the UI.
+  Errors from `importIcsAsTag` are caught locally (`try`/`catch` inside
+  the `useTransition` callback) and shown inline — letting that reject
+  unhandled once crashed the page; don't drop this try/catch.
+  `IcsHelpModal` is static content for a non-technical reader *and* an
+  AI generating the file — central point: one event per date, no RRULE.
+- **NavShell** (`src/components/nav-shell.tsx`): every page shares
+  `max-w-5xl px-4 md:px-8`. Sidebar nav rows and the bottom email/theme/
+  log-out group are centered as **shrink-to-fit groups** (no `w-full` on
+  the buttons — that stretches the hover background full-width and reads
+  as left-aligned). `html { scrollbar-gutter: stable }` stops the
+  sidebar shifting between tall/short pages. Mobile bottom nav is
+  `fixed bottom-0` with an explicit `z-40` (added after a report of page
+  content visually crossing above it).
+- Light theme is deliberately a step darker than raw white (`bg`/
+  `surface`/`surface-2` are grays, not `#fff`), body text is
+  `font-weight: 500` — plain 400 on near-white read as washed out.
+- `contrastText()` (`src/lib/color.ts`), `randomTagColor()`/
+  `deriveBlockTitle()` (`src/lib/tags.ts`), `formatDateDMY()`
+  (`src/lib/dates.ts`, `DD/MM`/`DD/MM/YYYY`, always zero-padded) — reuse
+  these; never render a raw `YYYY-MM-DD` or hand-roll a tag color.
 
 ## Mobile review
 
-A separate pass from Page review above — that one is done at desktop
-viewport via `npm run dev`; this one is a real phone. Write notes
-directly under the relevant heading — plain description, no need to
-phrase it as a question. Use a nested `Q:`/`A:` pair for anything that
-needs a decision before it can be fixed. Once a page's notes are
-addressed, this gets wiped back to an empty heading (or a short
-confirmed-status line) for the next pass, same convention as Page
-review. Once fixed, non-obvious findings belong in Architecture Notes/
-Rules above, not repeated here.
+Write notes under the relevant heading from a real phone — plain
+description, nested `Q:`/`A:` for anything needing a decision. Once
+addressed, wipe back to a short confirmed-status line; durable findings
+belong in Architecture Notes/Rules above, not here.
 
-### Onboarding
+### Onboarding / Login / Settings / Stats
 
-- Perfect
+Confirmed good.
 
-### Login
+### Hub / Calendar
 
-- Perfect
-
-### Hub
-
-Fixed this pass — mobile bottom nav now has an explicit `z-40` (was
-`z-auto`), so it can't be visually crossed by anything else on the page,
-calendar included. Re-check on a real phone; couldn't verify visually
-myself (no mobile device/screenshot tooling in this environment).
+Fixed — bottom nav `z-40`, calendar card `p-2` padding (see Architecture
+Notes). Not yet re-verified on a real device.
 
 ### Tasks
 
-Fixed this pass — see Architecture Notes for the mobile indent/card-size
-treatment and the due-date line split (addresses the lateral-scroll
-complaint). One thing only partially addressed:
-
-Q: The "which task is under which" complaint is really two problems —
-(1) the "under X" label was too subtle (fixed: bigger, bolder, "↳ under
-X"), and (2) on mobile, a root's children all list together, *then* every
-one of their children (grandchildren) lists together afterward — a
-grandchild doesn't render right after its own parent. Indentation alone
-can't fully disambiguate "which child owns this grandchild" while that
-grouped-by-depth order stays. Fully fixing that means switching mobile to
-real recursive rendering (child immediately followed by its own
-children) instead of the current three-level-grouped columns collapsing
-to one — a bigger change, and it'd want to not regress the desktop
-column layout, which relies on this same grouping. Left alone for now.
-A: (needs user decision — try the current fix on a phone first; if still
-unclear with multiple same-level children, ask for the recursive
-rendering change specifically.)
-
-### Calendar
-
-Fixed this pass — same bottom-nav `z-40` fix as Hub, plus the calendar
-card now has even `p-2` padding on all sides (weekday header/day columns
-no longer touch the card's border directly). Re-check on a real phone.
-
-### Settings
-
-- Perfect
-
-### Stats
-
-- Perfect
+Fixed — mobile indent/card-size, due-date line split, bolder "under X"
+label (see Architecture Notes). Open question: multi-child grandchild
+grouping is still ambiguous on mobile (see Architecture Notes' "known
+gap") — try the current fix on a phone first; ask for the recursive-
+rendering version specifically if it's still unclear.
 
 ### Other
 
-Fixed this pass — mobile bottom nav is `fixed bottom-0` with an explicit
-`z-40` now, guaranteeing it stays on top and visible regardless of page
-content. It was already `position: fixed` before; this just removes any
-ambiguity from stacking order. The desktop sidebar was already `sticky
-top-0 h-dvh`, unaffected.
+Fixed — bottom nav is `fixed` + `z-40`, unambiguously always on top.
+Desktop sidebar was already `sticky top-0 h-dvh`.
 
 ## Not yet built
 
-- Persistent/re-syncable `.ics` feeds — deliberately not how it works now.
-  `.ics` import is a manual one-shot "import as a new tag" action by
-  design (see Rules); a from-scratch feed-tracking model would need
-  reintroducing if this is wanted later (one was built and removed this
-  session — don't just resurrect `ics_feeds` as-is without re-checking it
-  still fits).
-- Google Calendar OAuth (`/api/google-calendar/callback`, token storage in
-  `google_calendar_connections`, no Settings UI teaser anymore either —
-  removed along with the disabled buttons).
-- Cleanup candidate, not urgent: `ics_feeds` table, `ics-feeds` storage
-  bucket, and `blocks.ics_source`/`ics_uid` columns are unused leftovers
-  from the removed feed-based `.ics` design — fine to drop in a future
-  migration once confirmed nothing needs reviving from them.
-- The deliberate visual-design polish pass (explicitly scoped separate
-  from functional work).
+- Persistent/re-syncable `.ics` feeds — deliberately not how it works
+  now (see Rules); a from-scratch feed model would be needed if wanted
+  later. Related cleanup, not urgent: `ics_feeds` table, `ics-feeds`
+  storage bucket, `blocks.ics_source`/`ics_uid` are safe to drop once
+  confirmed nothing needs reviving from them.
+- Google Calendar OAuth (`/api/google-calendar/callback`, token storage
+  in `google_calendar_connections`) — no Settings UI teaser either.
+- The deliberate visual-design polish pass (scoped separate from
+  functional work).
 - A "current streak" Stats metric — considered, not built (no natural
   home in the current plot/insight-card/breakdown trio).
-- Deploy to Vercel for real multi-device testing against the shared DB.
