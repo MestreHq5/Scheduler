@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { clsx } from "clsx";
 import type { Block, Tag } from "@/lib/database.types";
-import { createBlock, deleteBlock, moveBlock } from "@/lib/actions/blocks";
+import { createBlock, deleteBlock, duplicateBlock, moveBlock } from "@/lib/actions/blocks";
 import { formatDateDMY, nowClockInTimezone } from "@/lib/dates";
 import { contrastText } from "@/lib/color";
 import { BlockEditModal } from "@/components/block-edit-modal";
@@ -112,6 +112,8 @@ export function WeekCalendar({
   const [resize, setResize] = useState<ResizeState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editingBlock, setEditingBlock] = useState<BlockWithTag | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const copiedIdRef = useRef<string | null>(null);
   const [, startTransition] = useTransition();
 
   useEffect(() => {
@@ -119,6 +121,41 @@ export function WeekCalendar({
     const t = setTimeout(() => setError(null), 6000);
     return () => clearTimeout(t);
   }, [error]);
+
+  // Deselect if the selected block was deleted or moved out from under us.
+  useEffect(() => {
+    if (selectedId && !optimisticBlocks.some((b) => b.id === selectedId)) setSelectedId(null);
+  }, [optimisticBlocks, selectedId]);
+
+  // Ctrl/Cmd+C copies the selected block's id; Ctrl/Cmd+V duplicates it
+  // (fresh row, fresh id) in place. Ignored while typing in a field or a
+  // modal is open.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (editingBlock) return;
+
+      const key = e.key.toLowerCase();
+      if (key === "c") {
+        if (selectedId) copiedIdRef.current = selectedId;
+      } else if (key === "v") {
+        const id = copiedIdRef.current;
+        if (!id) return;
+        e.preventDefault();
+        startTransition(async () => {
+          try {
+            await duplicateBlock(id);
+          } catch (err) {
+            setError(`Couldn't duplicate block — ${err instanceof Error ? err.message : "something went wrong"}.`);
+          }
+        });
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedId, editingBlock, startTransition]);
 
   // Live "now" line — recomputed in the user's configured timezone, not the
   // browser's, since those can differ (see profile timezone setting).
@@ -272,12 +309,20 @@ export function WeekCalendar({
   function endDrag() {
     if (!drag) return;
 
-    // A stationary pointerdown/up is a click, not a drag — open the edit
-    // modal instead of firing a no-op moveBlock.
+    // A stationary pointerdown/up is a click, not a drag. The first click on
+    // a block selects it (colored border); a second click on an
+    // already-selected block opens the edit modal — this two-step avoids
+    // accidentally opening the modal while reaching for drag/copy/paste.
     if (!drag.moved) {
       const clicked = optimisticBlocks.find((b) => b.id === drag.id) ?? null;
       setDrag(null);
-      if (clicked) setEditingBlock(clicked);
+      if (!clicked) return;
+      if (selectedId === clicked.id) {
+        setSelectedId(null);
+        setEditingBlock(clicked);
+      } else {
+        setSelectedId(clicked.id);
+      }
       return;
     }
 
@@ -324,7 +369,7 @@ export function WeekCalendar({
         onPointerCancel={onPointerUpOrCancel}
       >
       <div
-        className="sticky top-0 z-20 grid bg-bg"
+        className="sticky top-0 z-20 -mx-2 -mt-2 grid rounded-t-xl bg-bg px-2 pt-2"
         style={{ gridTemplateColumns: `2.75rem repeat(${weekDates.length}, minmax(0, 1fr))` }}
       >
         <div />
@@ -374,6 +419,9 @@ export function WeekCalendar({
                 backgroundImage: `repeating-linear-gradient(to bottom, var(--color-border) 0, var(--color-border) 1px, transparent 1px, transparent ${hourHeight}px)`,
               }}
               onDoubleClick={(e) => onEmptyDoubleClick(e, date)}
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setSelectedId(null);
+              }}
             >
               {dayBlocks.map((b) => {
                 const { col, count } = layout.get(b.id) ?? { col: 0, count: 1 };
@@ -388,6 +436,7 @@ export function WeekCalendar({
                     height={Math.max(18, ((endMin - startMin) / 60) * hourHeight)}
                     leftPct={(col / count) * 100}
                     widthPct={100 / count}
+                    selected={selectedId === b.id}
                     onPointerDown={(e) => beginDrag(e, b)}
                     onResizeStart={(e, edge) => beginResize(e, b, edge)}
                   />
@@ -432,6 +481,7 @@ function BlockCard({
   height,
   leftPct,
   widthPct,
+  selected,
   onPointerDown,
   onResizeStart,
 }: {
@@ -440,6 +490,7 @@ function BlockCard({
   height: number;
   leftPct: number;
   widthPct: number;
+  selected: boolean;
   onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
   onResizeStart: (e: React.PointerEvent<HTMLDivElement>, edge: "start" | "end") => void;
 }) {
@@ -463,10 +514,15 @@ function BlockCard({
         width: `calc(${widthPct}% - 4px)`,
         backgroundColor: color,
         color: textColor,
-        boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.15)",
+        boxShadow: selected
+          ? "inset 0 0 0 1px rgba(0,0,0,0.15), 0 0 0 2px var(--color-accent)"
+          : "inset 0 0 0 1px rgba(0,0,0,0.15)",
         touchAction: "none",
       }}
-      className="group absolute overflow-hidden rounded-lg px-2 py-1 text-xs cursor-grab active:cursor-grabbing"
+      className={clsx(
+        "group absolute overflow-hidden rounded-lg px-2 py-1 text-xs cursor-grab active:cursor-grabbing",
+        selected && "z-10",
+      )}
     >
       <div
         onPointerDown={(e) => onResizeStart(e, "start")}

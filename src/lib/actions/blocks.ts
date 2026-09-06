@@ -92,6 +92,34 @@ export async function updateBlock(
   revalidatePath("/");
 }
 
+/** Duplicates a block in place (same date/time/tag/details) with a fresh id — used by the calendar's copy/paste shortcut. */
+export async function duplicateBlock(id: string) {
+  const { supabase, userId } = await currentUserId();
+
+  const { data: source, error: fetchError } = await supabase
+    .from("blocks")
+    .select("tag_id, title, date, start_time, end_time, details, location, notes")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .single();
+  if (fetchError) throw fetchError;
+
+  const { error } = await supabase.from("blocks").insert({
+    user_id: userId,
+    tag_id: source.tag_id,
+    title: source.title,
+    date: source.date,
+    start_time: source.start_time,
+    end_time: source.end_time,
+    details: source.details,
+    location: source.location,
+    notes: source.notes,
+  });
+  if (error) throw error;
+  revalidatePath("/calendar");
+  revalidatePath("/");
+}
+
 export async function deleteBlock(id: string) {
   const { supabase } = await currentUserId();
   const { error } = await supabase.from("blocks").delete().eq("id", id);
