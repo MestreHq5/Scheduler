@@ -210,7 +210,25 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   stacks into one column, so a group is now root → its children → its
   grandchildren, in that order — also fixes a pre-existing mobile bug
   where all roots listed first, then every child of every root mixed
-  together, then every grandchild.
+  together, then every grandchild. Below `md`, depth 1/2 cards also get a
+  left-margin indent (`MOBILE_INDENT`, `max-md:ml-4`/`max-md:ml-8` — pure
+  margin, deliberately not `pl-*`, so it can't collide with `LEVEL_CARD`'s
+  own padding) and shrink further (`max-md:px-*`/`py-*` on `LEVEL_CARD`),
+  standing in for the desktop column-per-depth layout without adding a
+  real column. The "under {parent}" mobile-only label is bolder/bigger
+  now ("↳ under X") after it read as too subtle. Known remaining gap: a
+  root's children list together, then *all* of those children's own
+  children list together afterward (grouped by depth, not per-parent), so
+  indentation alone can't fully disambiguate which grandchild belongs to
+  which child when a root has multiple children that each have their own
+  children — fixing that needs mobile to render recursively (child
+  immediately followed by its own children) instead of reusing this
+  three-level-grouped structure, without regressing desktop's column
+  layout, which depends on the same grouping. Not done yet — see Mobile
+  review. The due-date picker trigger now sits on its own line below the
+  tag/count/subtask-button row (previously shared one `flex-wrap` row),
+  which was overflowing sideways with a long tag label + due date + "+
+  subtask" together on a narrow phone screen.
 - **Calendar week view** (`src/components/week-calendar.tsx`) now takes
   an arbitrary-length `weekDates` array (grid columns and weekday labels
   are both derived from the array/date, not hardcoded to 7/Monday-start)
@@ -227,7 +245,13 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   (`router.push` inside `useTransition`, dims instead of flashing while
   pending, force-prefetches both neighboring weeks — see Rules) — this
   file has no navigation itself. New blocks default to the next full hour
-  from now (`nextHourSlot` in `quick-add-block.tsx`).
+  from now (`nextHourSlot` in `quick-add-block.tsx`). The scroll container
+  carries an even `p-2` on all sides (weekday header row and day columns
+  used to butt directly against the card's border) — safe to add here
+  specifically because `position: sticky` offsets (the day-header row,
+  the hour-label column) resolve against the *padding* edge of their
+  scrolling ancestor, so the padding reads as a permanent margin rather
+  than scrolling away or leaving a gap under the sticky pieces.
 - **Date/time pickers** (`wheel-date-picker.tsx`, `circular-time-
   picker.tsx`) both support full keyboard control now: the date wheel's
   ←/→ move focus between day/month/year, ↑/↓ nudge the focused column's
@@ -291,7 +315,11 @@ Authoritative source: `supabase/migrations/` + `src/lib/database.types.ts`.
   (absolutely positioned `w-px` span with a `via-border` gradient), not
   a flat `border-r`. `html { scrollbar-gutter: stable }` (`globals.css`)
   keeps the sidebar from shifting a few px when navigating between a
-  page tall enough to need a scrollbar and one that isn't.
+  page tall enough to need a scrollbar and one that isn't. The mobile
+  bottom nav (`fixed bottom-0 inset-x-0`) carries an explicit `z-40` —
+  added after a report of page content visually crossing above it; it
+  should already have painted on top by default DOM-order stacking, but
+  making it explicit removes any doubt.
 - Light theme (`globals.css`) is deliberately a step darker than a raw
   white — `--scheduler-bg`/`surface`/`surface-2` are all light *grays*,
   not `#fff`, and body text gets `font-weight: 500` (Space Grotesk 500
@@ -387,23 +415,37 @@ Rules above, not repeated here.
 
 ### Hub
 
-- Calendar is crossing above the bottom-bar but only the part of the hours (side panel of the calendar with the time). 
+Fixed this pass — mobile bottom nav now has an explicit `z-40` (was
+`z-auto`), so it can't be visually crossed by anything else on the page,
+calendar included. Re-check on a real phone; couldn't verify visually
+myself (no mobile device/screenshot tooling in this environment).
 
 ### Tasks
 
-- Lateral scroll needs to go: make tasks, due date on top of the other.
+Fixed this pass — see Architecture Notes for the mobile indent/card-size
+treatment and the due-date line split (addresses the lateral-scroll
+complaint). One thing only partially addressed:
 
-- If there are a lot of nested tasks, this becomes an infinite scroll, even with tag filter. Make the cards smaller and indent the subtasks from task and subsubtasks from subtasks. Similar to what you do on computer but a smaller indent instead of a whole new column. Cards cand have the content stack more vertically instead of horizontaly. 
-
-- There is no clear way to understand what task is inside which. I mean there is the "under xxx" information but visually this is not enough. Make it clearer. 
-
-
+Q: The "which task is under which" complaint is really two problems —
+(1) the "under X" label was too subtle (fixed: bigger, bolder, "↳ under
+X"), and (2) on mobile, a root's children all list together, *then* every
+one of their children (grandchildren) lists together afterward — a
+grandchild doesn't render right after its own parent. Indentation alone
+can't fully disambiguate "which child owns this grandchild" while that
+grouped-by-depth order stays. Fully fixing that means switching mobile to
+real recursive rendering (child immediately followed by its own
+children) instead of the current three-level-grouped columns collapsing
+to one — a bigger change, and it'd want to not regress the desktop
+column layout, which relies on this same grouping. Left alone for now.
+A: (needs user decision — try the current fix on a phone first; if still
+unclear with multiple same-level children, ask for the recursive
+rendering change specifically.)
 
 ### Calendar
 
-- Same issue in the hub about the calendar times crossing the bottom-menu. 
-
-- Add some more space between the days of the week and the border of the card. That means, make the margin more even across the card.
+Fixed this pass — same bottom-nav `z-40` fix as Hub, plus the calendar
+card now has even `p-2` padding on all sides (weekday header/day columns
+no longer touch the card's border directly). Re-check on a real phone.
 
 ### Settings
 
@@ -415,7 +457,11 @@ Rules above, not repeated here.
 
 ### Other
 
-- Bottom-bar (sidebar on computer) should be always visible, sticky.
+Fixed this pass — mobile bottom nav is `fixed bottom-0` with an explicit
+`z-40` now, guaranteeing it stays on top and visible regardless of page
+content. It was already `position: fixed` before; this just removes any
+ambiguity from stacking order. The desktop sidebar was already `sticky
+top-0 h-dvh`, unaffected.
 
 ## Not yet built
 

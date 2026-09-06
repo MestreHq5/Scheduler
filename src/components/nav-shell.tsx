@@ -74,7 +74,7 @@ export function NavShell({ email, children }: { email: string; children: React.R
         </main>
       </div>
 
-      <nav className="md:hidden fixed bottom-0 inset-x-0 border-t border-border bg-bg/95 backdrop-blur px-2 pb-[env(safe-area-inset-bottom)]">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 border-t border-border bg-bg/95 backdrop-blur px-2 pb-[env(safe-area-inset-bottom)]">
         <div className="flex justify-around">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? pathname === "/" : pathname.startsWith(href);

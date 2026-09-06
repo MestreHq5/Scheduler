@@ -297,7 +297,10 @@ export function WeekCalendar({
       )}
       <div
         ref={scrollRef}
-        className={clsx("overflow-y-auto overflow-x-hidden rounded-xl border border-border", heightClassName)}
+        className={clsx(
+          "overflow-y-auto overflow-x-hidden rounded-xl border border-border p-2",
+          heightClassName,
+        )}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUpOrCancel}
         onPointerCancel={onPointerUpOrCancel}

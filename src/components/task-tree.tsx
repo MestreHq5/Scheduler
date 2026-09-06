@@ -20,9 +20,13 @@ const ROOT_DROP = "ROOT";
 const LEVEL_BG: string[] = ["bg-level-0", "bg-level-1", "bg-level-2"];
 const LEVEL_CARD: string[] = [
   "rounded-2xl border border-border/60 px-4 py-3",
-  "rounded-xl border border-border/50 px-3.5 py-2.5",
-  "rounded-lg border border-border/40 px-3 py-2",
+  "rounded-xl border border-border/50 px-3.5 py-2.5 max-md:px-3 max-md:py-2",
+  "rounded-lg border border-border/40 px-3 py-2 max-md:px-2.5 max-md:py-1.5",
 ];
+// Mobile-only left indent, standing in for the desktop column-per-depth
+// layout ("smaller indent instead of a whole new column") — depth 0 gets
+// none. Pure margin, so it can't collide with LEVEL_CARD's own padding.
+const MOBILE_INDENT: string[] = ["", "max-md:ml-4", "max-md:ml-8"];
 
 type DragVisual = { id: string; x: number; y: number; overId: string | null };
 type MoveUpdate = { id: string; newParentId: string | null };
@@ -387,6 +391,7 @@ function TaskNode({
         "hover:border-accent/40 transition-colors duration-500",
         LEVEL_CARD[task.depth],
         LEVEL_BG[task.depth],
+        MOBILE_INDENT[task.depth],
         task.done && "opacity-50",
         isBeingDragged && "opacity-40",
         isInvalidDropTarget && "opacity-30",
@@ -416,7 +421,9 @@ function TaskNode({
 
         <div className="flex-1 min-w-0">
           {parentTask && (
-            <p className="md:hidden text-[10px] text-text-muted/70 mb-0.5 truncate">under {parentTask.title}</p>
+            <p className="md:hidden text-[11px] font-medium text-text-muted mb-1 truncate">
+              ↳ under {parentTask.title}
+            </p>
           )}
           <div className="flex items-center gap-2 flex-wrap">
             {hasChildren && (
@@ -461,6 +468,21 @@ function TaskNode({
             <button type="button" onClick={() => setEditingTag((v) => !v)} aria-label="Change tag">
               <TagPill tag={tag} />
             </button>
+            {hasChildren && (
+              <span className="text-xs text-text-muted">
+                {children.filter((c) => c.done).length}/{children.length}
+              </span>
+            )}
+            {canNest && (
+              <button
+                onClick={() => setAddingChild((v) => !v)}
+                className="text-xs text-accent hover:opacity-80"
+              >
+                + subtask
+              </button>
+            )}
+          </div>
+          <div className="mt-1">
             <WheelDatePicker
               value={task.due_date}
               onChange={saveDate}
@@ -480,19 +502,6 @@ function TaskNode({
                 )
               }
             />
-            {hasChildren && (
-              <span className="text-xs text-text-muted">
-                {children.filter((c) => c.done).length}/{children.length}
-              </span>
-            )}
-            {canNest && (
-              <button
-                onClick={() => setAddingChild((v) => !v)}
-                className="text-xs text-accent hover:opacity-80"
-              >
-                + subtask
-              </button>
-            )}
           </div>
 
           {editingTag && (
